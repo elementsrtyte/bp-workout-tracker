@@ -1,17 +1,15 @@
-//
-//  bp_workoutApp.swift
-//  bp-workout
-//
-//  Created by Neil Bhargava on 4/11/26.
-//
-
+import SwiftData
 import SwiftUI
 
 @main
 struct bp_workoutApp: App {
+    @StateObject private var appSettings = AppSettings()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environmentObject(appSettings)
         }
+        .modelContainer(for: [LoggedWorkout.self, LoggedExercise.self, LoggedSet.self])
     }
 }

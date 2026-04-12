@@ -1,24 +1,15 @@
-//
-//  ContentView.swift
-//  bp-workout
-//
-//  Created by Neil Bhargava on 4/11/26.
-//
-
+import SwiftData
 import SwiftUI
 
+/// Legacy entry; app uses `RootView` from `bp_workoutApp`.
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        RootView()
     }
 }
 
 #Preview {
     ContentView()
+        .environmentObject(AppSettings())
+        .modelContainer(for: [LoggedWorkout.self, LoggedExercise.self, LoggedSet.self], inMemory: true)
 }
