@@ -19,8 +19,9 @@ struct ProgressTrackerView: View {
                         Text("Volume").tag(ProgressChartMode.volume)
                         Text("Reps").tag(ProgressChartMode.reprange)
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
 
@@ -33,8 +34,11 @@ struct ProgressTrackerView: View {
                         )
                     }
                 }
-                .padding(16)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity)
             .background(BlueprintTheme.bg)
             .navigationTitle("Progress")
             .searchable(text: $viewModel.search, prompt: "Search exercises")
@@ -83,6 +87,7 @@ private struct ExerciseProgressCard: View {
             chartArea
             footer
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(BlueprintTheme.card)
         .overlay(
@@ -93,12 +98,13 @@ private struct ExerciseProgressCard: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
+        HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(ex.name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(BlueprintTheme.cream)
-                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
                     Text("\(cleanEntries.count) points")
                         .font(.caption2)
@@ -114,7 +120,7 @@ private struct ExerciseProgressCard: View {
                     }
                 }
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
             if chartMode != .reprange {
                 let pct = chartMode == .volume
                     ? ProgressMetrics.volumePctChange(entries: cleanEntries)
@@ -126,6 +132,7 @@ private struct ExerciseProgressCard: View {
                         .font(.caption.monospacedDigit().weight(.semibold))
                 }
                 .foregroundStyle(trend == .up ? BlueprintTheme.mint : trend == .down ? BlueprintTheme.danger : BlueprintTheme.muted)
+                .fixedSize(horizontal: true, vertical: false)
             }
         }
     }
@@ -162,6 +169,7 @@ private struct ExerciseProgressCard: View {
             }
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
+            .frame(maxWidth: .infinity)
             .frame(height: 90)
         }
     }
@@ -237,13 +245,17 @@ private struct RepRangeBars: View {
                             .frame(height: max(h, pair.count > 0 ? 8 : 2))
                             .frame(maxHeight: .infinity, alignment: .bottom)
                     }
+                    .frame(maxWidth: .infinity)
                     Text(pair.bucket.label)
                         .font(.system(size: 9))
                         .foregroundStyle(BlueprintTheme.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
                 .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -253,17 +265,21 @@ private struct FlowRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(items, id: \.bucket.label) { pair in
-                HStack(spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
                     RoundedRectangle(cornerRadius: 1)
                         .fill(Color(hex: pair.bucket.colorHex))
                         .frame(width: 6, height: 6)
+                        .padding(.top, 2)
                     Text(pair.bucket.description)
                         .font(.caption2)
                         .foregroundStyle(BlueprintTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text("\(pair.count)")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Color(hex: pair.bucket.colorHex))
+                        .fixedSize(horizontal: true, vertical: false)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

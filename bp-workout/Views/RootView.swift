@@ -4,12 +4,12 @@ struct RootView: View {
     var body: some View {
         TabView {
             NavigationStack {
-                HomeView()
+                WorkoutHubView()
             }
-            .tabItem { Label("Programs", systemImage: "list.bullet.rectangle") }
+            .tabItem { Label("Workout", systemImage: "figure.strengthtraining.traditional") }
 
             LogWorkoutListView()
-                .tabItem { Label("Log", systemImage: "plus.square.on.square") }
+                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
 
             ProgressTrackerView()
                 .tabItem { Label("Progress", systemImage: "chart.xyaxis.line") }

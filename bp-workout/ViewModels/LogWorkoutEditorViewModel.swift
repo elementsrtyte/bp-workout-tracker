@@ -22,18 +22,19 @@ final class LogWorkoutEditorViewModel: ObservableObject {
         exercises.contains { ex in
             !ex.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && ex.sets.contains { s in
-                    (Double(s.weight.trimmingCharacters(in: .whitespaces)) ?? 0) > 0
-                        && (Int(s.reps.trimmingCharacters(in: .whitespaces)) ?? 0) > 0
+                    let w = Double(s.weight.trimmingCharacters(in: .whitespaces)) ?? -1
+                    let r = Int(s.reps.trimmingCharacters(in: .whitespaces)) ?? 0
+                    return w >= 0 && r > 0
                 }
         }
     }
 
-    func onAppear() {
+    func onAppear(loggedWorkoutsForPrefill: [LoggedWorkout] = []) {
         bundle.loadIfNeeded()
-        applyTemplateIfNeeded()
+        applyTemplateIfNeeded(loggedWorkouts: loggedWorkoutsForPrefill)
     }
 
-    private func applyTemplateIfNeeded() {
+    private func applyTemplateIfNeeded(loggedWorkouts: [LoggedWorkout]) {
         guard let t = template, exercises.isEmpty else { return }
         if let pn = t.programName { programName = pn }
         if let dl = t.dayLabel { dayLabel = dl }
@@ -43,8 +44,16 @@ final class LogWorkoutEditorViewModel: ObservableObject {
               let p = programs.first(where: { $0.name == programName }),
               let day = p.days.first(where: { $0.label == dayLabel })
         else { return }
+        let progress = bundle.progressBundle
         exercises = day.exercises.map { ex in
-            DraftExercise(name: ex.name, sets: [DraftSet(weight: "", reps: "")])
+            let sug = WorkoutPrefill.suggest(
+                exerciseName: ex.name,
+                templateMax: ex.maxWeight,
+                loggedWorkouts: loggedWorkouts,
+                progressBundle: progress
+            )
+            let wStr = sug.weight == 0 ? "0" : WorkoutPrefill.formatWeight(sug.weight)
+            return DraftExercise(name: ex.name, sets: [DraftSet(weight: wStr, reps: "\(sug.reps)")])
         }
     }
 
@@ -65,7 +74,7 @@ final class LogWorkoutEditorViewModel: ObservableObject {
             for ds in dex.sets {
                 guard let w = Double(ds.weight.trimmingCharacters(in: .whitespaces)),
                       let r = Int(ds.reps.trimmingCharacters(in: .whitespaces)),
-                      w > 0, r > 0
+                      w >= 0, r > 0
                 else { continue }
                 let set = LoggedSet(weight: w, reps: r, order: sOrder)
                 sOrder += 1

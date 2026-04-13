@@ -26,7 +26,7 @@ struct LogWorkoutListView: View {
                 }
                 .onDelete(perform: delete)
             }
-            .navigationTitle("Log")
+            .navigationTitle("History")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -99,6 +99,7 @@ struct LogWorkoutEditorView: View {
     @StateObject private var viewModel: LogWorkoutEditorViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \LoggedWorkout.date, order: .reverse) private var loggedWorkouts: [LoggedWorkout]
 
     init(template: LogWorkoutTemplate?) {
         _viewModel = StateObject(wrappedValue: LogWorkoutEditorViewModel(template: template))
@@ -159,6 +160,6 @@ struct LogWorkoutEditorView: View {
                 .disabled(!viewModel.canSave)
             }
         }
-        .onAppear { viewModel.onAppear() }
+        .onAppear { viewModel.onAppear(loggedWorkoutsForPrefill: loggedWorkouts) }
     }
 }
