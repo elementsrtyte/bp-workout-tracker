@@ -50,13 +50,21 @@ final class LogWorkoutEditorViewModel: ObservableObject {
                 exerciseName: ex.name,
                 templateMax: ex.maxWeight,
                 loggedWorkouts: loggedWorkouts,
-                progressBundle: progress
+                progressBundle: progress,
+                prescriptionIsAmrap: ex.prescriptionIsAmrap,
+                prescriptionIsWarmup: ex.prescriptionIsWarmup
             )
             let wStr = sug.weight == 0 ? "0" : WorkoutPrefill.formatWeight(sug.weight)
             let rStr = "\(sug.reps)"
             let n = ex.prescribedSets
             let sets = (0 ..< n).map { _ in DraftSet(weight: wStr, reps: rStr) }
-            return DraftExercise(name: ex.name, sets: sets)
+            return DraftExercise(
+                name: ex.name,
+                sets: sets,
+                isAmrapPrescription: ex.prescriptionIsAmrap,
+                isWarmupPrescription: ex.prescriptionIsWarmup,
+                programNotes: ex.trimmedProgramNotes
+            )
         }
     }
 
@@ -98,11 +106,26 @@ struct DraftExercise: Identifiable {
     let id: UUID
     var name: String
     var sets: [DraftSet]
+    /// From program template: show AMRAP hint in the detailed editor.
+    var isAmrapPrescription: Bool
+    var isWarmupPrescription: Bool
+    /// From program template (read-only context for the editor).
+    var programNotes: String?
 
-    init(id: UUID = UUID(), name: String, sets: [DraftSet]) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        sets: [DraftSet],
+        isAmrapPrescription: Bool = false,
+        isWarmupPrescription: Bool = false,
+        programNotes: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.sets = sets
+        self.isAmrapPrescription = isAmrapPrescription
+        self.isWarmupPrescription = isWarmupPrescription
+        self.programNotes = programNotes
     }
 }
 

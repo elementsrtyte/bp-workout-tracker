@@ -43,6 +43,11 @@ final class ProgramEditorViewModel: ObservableObject {
         var name: String
         var maxWeight: String
         var targetSets: Int
+        /// Same number groups exercises into a superset; nil = not in a superset.
+        var supersetGroup: Int?
+        var isAmrap: Bool
+        var isWarmup: Bool
+        var notes: String
     }
 
     init(route: ProgramEditorRoute) {
@@ -58,7 +63,7 @@ final class ProgramEditorViewModel: ObservableObject {
                     id: UUID(),
                     label: "Day 1",
                     exercises: [
-                        EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3),
+                        EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: ""),
                     ]
                 ),
             ]
@@ -95,7 +100,11 @@ final class ProgramEditorViewModel: ObservableObject {
                         id: UUID(),
                         name: ex.name,
                         maxWeight: ex.maxWeight,
-                        targetSets: ex.targetSets ?? 3
+                        targetSets: ex.targetSets ?? 3,
+                        supersetGroup: ex.supersetGroup,
+                        isAmrap: ex.prescriptionIsAmrap,
+                        isWarmup: ex.prescriptionIsWarmup,
+                        notes: ex.notes ?? ""
                     )
                 }
             )
@@ -105,7 +114,7 @@ final class ProgramEditorViewModel: ObservableObject {
                 EditableDay(
                     id: UUID(),
                     label: "Day 1",
-                    exercises: [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3)],
+                    exercises: [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: "")],
                 ),
             ]
         }
@@ -132,7 +141,19 @@ final class ProgramEditorViewModel: ObservableObject {
                 let n = ex.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !n.isEmpty else { return nil }
                 let ts = max(1, min(20, ex.targetSets))
-                return Exercise(name: n, maxWeight: ex.maxWeight.trimmingCharacters(in: .whitespacesAndNewlines), targetSets: ts)
+                let sg = ex.supersetGroup.flatMap { (1 ... 9).contains($0) ? $0 : nil }
+                return Exercise(
+                    name: n,
+                    maxWeight: ex.maxWeight.trimmingCharacters(in: .whitespacesAndNewlines),
+                    targetSets: ts,
+                    supersetGroup: sg,
+                    isAmrap: ex.isAmrap ? true : nil,
+                    isWarmup: ex.isWarmup ? true : nil,
+                    notes: {
+                        let t = ex.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+                        return t.isEmpty ? nil : t
+                    }()
+                )
             }
             return WorkoutDay(label: d.label.trimmingCharacters(in: .whitespacesAndNewlines), exercises: exs)
         }.filter { !$0.exercises.isEmpty }
@@ -157,7 +178,7 @@ final class ProgramEditorViewModel: ObservableObject {
             EditableDay(
                 id: UUID(),
                 label: "Day \(n)",
-                exercises: [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3)],
+                exercises: [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: "")],
             )
         )
         days = copy
@@ -176,7 +197,7 @@ final class ProgramEditorViewModel: ObservableObject {
         guard days.indices.contains(dayIndex) else { return }
         var copy = days
         var d = copy[dayIndex]
-        d.exercises.append(EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3))
+        d.exercises.append(EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: ""))
         copy[dayIndex] = d
         days = copy
     }
@@ -187,7 +208,7 @@ final class ProgramEditorViewModel: ObservableObject {
         var d = copy[dayIndex]
         d.exercises.remove(atOffsets: offsets)
         if d.exercises.isEmpty {
-            d.exercises = [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3)]
+            d.exercises = [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: "")]
         }
         copy[dayIndex] = d
         days = copy
@@ -197,6 +218,92 @@ final class ProgramEditorViewModel: ObservableObject {
 private struct ProgramExerciseNameFieldID: Hashable {
     let dayIndex: Int
     let exIndex: Int
+}
+
+/// Collapsed by default; supersets, AMRAP, and warm-up prescriptions.
+private struct ProgramExerciseAdvancedOptionsSection: View {
+    let summarySubtitle: String?
+    @Binding var supersetGroup: Int?
+    @Binding var isAmrap: Bool
+    @Binding var isWarmup: Bool
+    @Binding var notes: String
+    @State private var isExpanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Notes")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(BlueprintTheme.muted)
+                    TextField("Cues, equipment, intent…", text: $notes, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .foregroundStyle(BlueprintTheme.cream)
+                        .lineLimit(3 ... 8)
+                        .padding(12)
+                        .background(BlueprintTheme.bg.opacity(0.55))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(BlueprintTheme.border, lineWidth: 1)
+                        )
+                }
+
+                Picker("Superset", selection: $supersetGroup) {
+                    Text("No superset").tag(Int?.none)
+                    ForEach(1 ..< 10, id: \.self) { g in
+                        Text("Superset group \(g)").tag(Int?.some(g))
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(BlueprintTheme.lavender)
+
+                Toggle(isOn: $isAmrap) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("AMRAP")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(BlueprintTheme.cream)
+                        Text("Reps to failure each set (log what you get).")
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.muted)
+                    }
+                }
+                .tint(BlueprintTheme.mint)
+
+                Toggle(isOn: $isWarmup) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Warm-up / activation")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(BlueprintTheme.cream)
+                        Text("Skipping these won’t block saving the session.")
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.muted)
+                    }
+                }
+                .tint(BlueprintTheme.mutedLight)
+            }
+            .padding(.top, 4)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(BlueprintTheme.muted)
+                    Text("Advanced options")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(BlueprintTheme.mutedLight)
+                }
+                if let summarySubtitle, !summarySubtitle.isEmpty {
+                    Text(summarySubtitle)
+                        .font(.caption2)
+                        .foregroundStyle(BlueprintTheme.muted)
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .tint(BlueprintTheme.lavender)
+    }
 }
 
 struct ProgramEditorView: View {
@@ -233,7 +340,7 @@ struct ProgramEditorView: View {
                     }
                 }
 
-                Text("Each day needs a name and at least one exercise. Names are free-form; suggestions are optional.")
+                Text("Each day needs a name and at least one exercise. Supersets, AMRAP, warm-up, and optional notes are under Advanced options on each exercise.")
                     .font(.caption)
                     .foregroundStyle(BlueprintTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -410,6 +517,20 @@ struct ProgramEditorView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
+    private func exerciseAdvancedOptionsSummary(_ ex: ProgramEditorViewModel.EditableExercise) -> String? {
+        var parts: [String] = []
+        if let g = ex.supersetGroup {
+            parts.append("Superset \(g)")
+        }
+        if ex.isAmrap { parts.append("AMRAP") }
+        if ex.isWarmup { parts.append("Warm-up") }
+        if !ex.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append("Notes")
+        }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " · ")
+    }
+
     private func exerciseEditorBlock(dayIndex: Int, exIndex: Int) -> some View {
         let nameFieldID = ProgramExerciseNameFieldID(dayIndex: dayIndex, exIndex: exIndex)
         let canRemoveExercise = vm.days[dayIndex].exercises.count > 1
@@ -462,6 +583,14 @@ struct ProgramEditorView: View {
                 }
             }
             .padding(.horizontal, 4)
+
+            ProgramExerciseAdvancedOptionsSection(
+                summarySubtitle: exerciseAdvancedOptionsSummary(vm.days[dayIndex].exercises[exIndex]),
+                supersetGroup: exerciseSupersetGroupBinding(dayIndex: dayIndex, exIndex: exIndex),
+                isAmrap: exerciseAmrapBinding(dayIndex: dayIndex, exIndex: exIndex),
+                isWarmup: exerciseWarmupBinding(dayIndex: dayIndex, exIndex: exIndex),
+                notes: exerciseNotesBinding(dayIndex: dayIndex, exIndex: exIndex)
+            )
         }
         .padding(12)
         .background(BlueprintTheme.cardInner.opacity(0.65))
@@ -607,6 +736,66 @@ struct ProgramEditorView: View {
                 var d = copy[dayIndex]
                 var e = d.exercises[exIndex]
                 e.targetSets = new
+                d.exercises[exIndex] = e
+                copy[dayIndex] = d
+                vm.days = copy
+            }
+        )
+    }
+
+    private func exerciseSupersetGroupBinding(dayIndex: Int, exIndex: Int) -> Binding<Int?> {
+        Binding(
+            get: { vm.days[dayIndex].exercises[exIndex].supersetGroup },
+            set: { new in
+                var copy = vm.days
+                var d = copy[dayIndex]
+                var e = d.exercises[exIndex]
+                e.supersetGroup = new.flatMap { (1 ... 9).contains($0) ? $0 : nil }
+                d.exercises[exIndex] = e
+                copy[dayIndex] = d
+                vm.days = copy
+            }
+        )
+    }
+
+    private func exerciseAmrapBinding(dayIndex: Int, exIndex: Int) -> Binding<Bool> {
+        Binding(
+            get: { vm.days[dayIndex].exercises[exIndex].isAmrap },
+            set: { new in
+                var copy = vm.days
+                var d = copy[dayIndex]
+                var e = d.exercises[exIndex]
+                e.isAmrap = new
+                d.exercises[exIndex] = e
+                copy[dayIndex] = d
+                vm.days = copy
+            }
+        )
+    }
+
+    private func exerciseWarmupBinding(dayIndex: Int, exIndex: Int) -> Binding<Bool> {
+        Binding(
+            get: { vm.days[dayIndex].exercises[exIndex].isWarmup },
+            set: { new in
+                var copy = vm.days
+                var d = copy[dayIndex]
+                var e = d.exercises[exIndex]
+                e.isWarmup = new
+                d.exercises[exIndex] = e
+                copy[dayIndex] = d
+                vm.days = copy
+            }
+        )
+    }
+
+    private func exerciseNotesBinding(dayIndex: Int, exIndex: Int) -> Binding<String> {
+        Binding(
+            get: { vm.days[dayIndex].exercises[exIndex].notes },
+            set: { new in
+                var copy = vm.days
+                var d = copy[dayIndex]
+                var e = d.exercises[exIndex]
+                e.notes = new
                 d.exercises[exIndex] = e
                 copy[dayIndex] = d
                 vm.days = copy

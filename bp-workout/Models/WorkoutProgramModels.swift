@@ -6,6 +6,23 @@ struct Exercise: Codable, Hashable, Identifiable {
     let maxWeight: String
     /// Prescribed working sets for this lift; omit in JSON to default to 3.
     let targetSets: Int?
+    /// Exercises sharing the same positive group index are supersetted; omit or null if not in a superset.
+    let supersetGroup: Int?
+    /// When true, working sets are AMRAP (reps to failure); omit or false for a fixed rep target.
+    let isAmrap: Bool?
+    /// When true, this line is warm-up / activation only (optional for save warnings).
+    let isWarmup: Bool?
+    /// Optional free-form notes for this exercise (coaching cues, equipment, etc.).
+    let notes: String?
+
+    var prescriptionIsAmrap: Bool { isAmrap == true }
+    var prescriptionIsWarmup: Bool { isWarmup == true }
+
+    var trimmedProgramNotes: String? {
+        guard let n = notes else { return nil }
+        let t = n.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
 
     /// Clamped prescription used for logging UI (1…20).
     var prescribedSets: Int {

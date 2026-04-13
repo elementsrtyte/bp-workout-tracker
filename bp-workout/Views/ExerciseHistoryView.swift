@@ -29,13 +29,13 @@ struct ExerciseHistoryView: View {
                 if entries.isEmpty {
                     Text("No history for this exercise yet. Log a few sessions and it will show up here.")
                         .font(.subheadline)
-                        .foregroundStyle(BlueprintTheme.muted)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 24)
                 } else {
                     Text("\(entries.count) logged sets")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(BlueprintTheme.muted)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
 
                     Chart {
                         ForEach(Array(entries.enumerated()), id: \.offset) { _, e in
@@ -61,7 +61,7 @@ struct ExerciseHistoryView: View {
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                                 .foregroundStyle(BlueprintTheme.border)
                             AxisValueLabel()
-                                .foregroundStyle(BlueprintTheme.muted)
+                                .foregroundStyle(BlueprintTheme.mutedLight)
                         }
                     }
                     .chartYAxis {
@@ -69,7 +69,7 @@ struct ExerciseHistoryView: View {
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                                 .foregroundStyle(BlueprintTheme.border)
                             AxisValueLabel()
-                                .foregroundStyle(BlueprintTheme.muted)
+                                .foregroundStyle(BlueprintTheme.mutedLight)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -105,7 +105,7 @@ struct ExerciseHistoryView: View {
         VStack(spacing: 4) {
             Text(title)
                 .font(.caption2)
-                .foregroundStyle(BlueprintTheme.muted)
+                .foregroundStyle(BlueprintTheme.mutedLight)
             Text(value)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(BlueprintTheme.cream)

@@ -34,7 +34,9 @@ enum WorkoutPrefill {
         exerciseName: String,
         templateMax: String,
         loggedWorkouts: [LoggedWorkout],
-        progressBundle: ProgressDataBundle?
+        progressBundle: ProgressDataBundle?,
+        prescriptionIsAmrap: Bool = false,
+        prescriptionIsWarmup: Bool = false
     ) -> Suggestion {
         let key = ExerciseNameNormalizer.key(exerciseName)
         let userEntries = LoggedWorkoutProgressExport.entriesByExerciseName(workouts: loggedWorkouts)
@@ -73,10 +75,15 @@ enum WorkoutPrefill {
             return "Peak \(formatWeight(p.peakWeight)) lb"
         }()
 
-        let planDisplay = planDisplayLine(
+        let planDisplayRaw = planDisplayLine(
             exerciseName: exerciseName,
             templateMax: templateMax,
             progress: progress
+        )
+        let planDisplay = planDisplayWithPrescriptionSuffixes(
+            planDisplayRaw,
+            amrap: prescriptionIsAmrap,
+            warmup: prescriptionIsWarmup
         )
 
         if let last = lastSessionSet(for: key, workouts: loggedWorkouts) {
@@ -101,6 +108,19 @@ enum WorkoutPrefill {
             }
         }
         return Suggestion(weight: w, reps: r, prHint: prHint, planDisplay: planDisplay)
+    }
+
+    private static func planDisplayWithPrescriptionSuffixes(_ base: String, amrap: Bool, warmup: Bool) -> String {
+        var s = base
+        if amrap {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.isEmpty { s = "AMRAP" } else { s = "\(s) · AMRAP" }
+        }
+        if warmup {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.isEmpty { s = "Warm-up" } else { s = "\(s) · Warm-up" }
+        }
+        return s
     }
 
     static func formatWeight(_ w: Double) -> String {

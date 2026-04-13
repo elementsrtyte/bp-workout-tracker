@@ -19,6 +19,14 @@ struct QuickExerciseState: Identifiable, Equatable {
     var workingReps: Int
     var loggedSets: [LoggedSetSnapshot]
     let prHint: String?
+    /// Same index = same superset round; nil if not supersetted.
+    let supersetGroup: Int?
+    /// Program prescribes reps to failure for each working set.
+    let isAmrap: Bool
+    /// Warm-up / activation — not required for “unfinished workout” warnings.
+    let isWarmup: Bool
+    /// Program author notes (optional).
+    let programNotes: String?
 
     var setsRemaining: Int { max(0, targetSets - loggedSets.count) }
     var isSetsComplete: Bool { loggedSets.count >= targetSets }
@@ -94,9 +102,9 @@ final class WorkoutHubViewModel: ObservableObject {
         exerciseRows.contains { !$0.loggedSets.isEmpty }
     }
 
-    /// Exercises on this day that are below their prescribed set count (including not started).
+    /// Exercises on this day that are below their prescribed set count (including not started). Warm-up lines are excluded.
     var incompleteExerciseRows: [QuickExerciseState] {
-        exerciseRows.filter { $0.loggedSets.count < $0.targetSets }
+        exerciseRows.filter { !$0.isWarmup && $0.loggedSets.count < $0.targetSets }
     }
 
     var hasIncompletePlannedWork: Bool {
@@ -272,7 +280,9 @@ final class WorkoutHubViewModel: ObservableObject {
                 exerciseName: ex.name,
                 templateMax: ex.maxWeight,
                 loggedWorkouts: logged,
-                progressBundle: bundleData
+                progressBundle: bundleData,
+                prescriptionIsAmrap: ex.prescriptionIsAmrap,
+                prescriptionIsWarmup: ex.prescriptionIsWarmup
             )
             let prescribed = ex.prescribedSets
             var state = QuickExerciseState(
@@ -283,7 +293,11 @@ final class WorkoutHubViewModel: ObservableObject {
                 workingWeight: sug.weight,
                 workingReps: sug.reps,
                 loggedSets: [],
-                prHint: sug.prHint
+                prHint: sug.prHint,
+                supersetGroup: ex.supersetGroup,
+                isAmrap: ex.prescriptionIsAmrap,
+                isWarmup: ex.prescriptionIsWarmup,
+                programNotes: ex.trimmedProgramNotes
             )
             if let draft = loadDraft(), draft.programId == program.id, draft.dayLabel == day.label,
                let line = draft.lines.first(where: { $0.exerciseName == ex.name && $0.sortOrder == idx }) {

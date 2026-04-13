@@ -296,19 +296,55 @@ private struct QuickLogExerciseCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 2))
                     .padding(.top, 5)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(row.name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(BlueprintTheme.cream)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(row.name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(BlueprintTheme.cream)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let g = row.supersetGroup {
+                            Text("SS \(g)")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(BlueprintTheme.amber)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(BlueprintTheme.amber.opacity(0.18))
+                                .clipShape(Capsule())
+                        }
+                        if row.isAmrap {
+                            Text("AMRAP")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(BlueprintTheme.mint)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(BlueprintTheme.mint.opacity(0.18))
+                                .clipShape(Capsule())
+                        }
+                        if row.isWarmup {
+                            Text("WARM-UP")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(BlueprintTheme.mutedLight)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(BlueprintTheme.cardInner)
+                                .overlay(Capsule().stroke(BlueprintTheme.border, lineWidth: 1))
+                                .clipShape(Capsule())
+                        }
+                    }
                     HStack(spacing: 8) {
                         if let hint = row.prHint {
                             Text(hint)
                                 .font(.caption2)
-                                .foregroundStyle(BlueprintTheme.lavender.opacity(0.9))
+                                .foregroundStyle(BlueprintTheme.lavender)
                         }
                         Text("Plan: \(row.planDisplay)")
                             .font(.caption2)
                             .foregroundStyle(BlueprintTheme.muted)
+                    }
+                    if let note = row.programNotes {
+                        Text(note)
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.mutedLight)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Text("\(row.loggedSets.count) / \(row.targetSets) sets")
                         .font(.caption2.weight(.medium))
@@ -328,7 +364,12 @@ private struct QuickLogExerciseCard: View {
 
             HStack(spacing: 8) {
                 nudgeChip(title: "Wt", value: weightLabel, minus: { viewModel.nudgeWeight(for: row.id, delta: -2.5) }, plus: { viewModel.nudgeWeight(for: row.id, delta: 2.5) })
-                nudgeChip(title: "Reps", value: "\(row.workingReps)", minus: { viewModel.nudgeReps(for: row.id, delta: -1) }, plus: { viewModel.nudgeReps(for: row.id, delta: 1) })
+                nudgeChip(
+                    title: row.isAmrap ? "Reps (AMRAP)" : "Reps",
+                    value: "\(row.workingReps)",
+                    minus: { viewModel.nudgeReps(for: row.id, delta: -1) },
+                    plus: { viewModel.nudgeReps(for: row.id, delta: 1) }
+                )
             }
 
             HStack(spacing: 8) {
@@ -473,11 +514,38 @@ private struct ExerciseTable: View {
                             .frame(width: 6, height: 6)
                             .clipShape(RoundedRectangle(cornerRadius: 2))
                             .padding(.top, 4)
-                        Text(ex.name)
-                            .font(.subheadline)
-                            .foregroundStyle(BlueprintTheme.cream)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(ex.name)
+                                .font(.subheadline)
+                                .foregroundStyle(BlueprintTheme.cream)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if ex.supersetGroup != nil || ex.prescriptionIsAmrap || ex.prescriptionIsWarmup {
+                                HStack(spacing: 6) {
+                                    if let g = ex.supersetGroup {
+                                        Text("Superset \(g)")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(BlueprintTheme.amber)
+                                    }
+                                    if ex.prescriptionIsAmrap {
+                                        Text("AMRAP")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(BlueprintTheme.mint)
+                                    }
+                                    if ex.prescriptionIsWarmup {
+                                        Text("Warm-up")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(BlueprintTheme.mutedLight)
+                                    }
+                                }
+                            }
+                            if let note = ex.trimmedProgramNotes {
+                                Text(note)
+                                    .font(.caption2)
+                                    .foregroundStyle(BlueprintTheme.mutedLight)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .layoutPriority(0)

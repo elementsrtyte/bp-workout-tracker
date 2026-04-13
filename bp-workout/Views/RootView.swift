@@ -21,5 +21,6 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .tint(BlueprintTheme.purple)
+        .preferredColorScheme(.dark)
     }
 }

@@ -23,6 +23,24 @@ struct LogWorkoutEditorView: View {
                 ForEach($viewModel.exercises) { $ex in
                     DisclosureGroup(ex.name.isEmpty ? "Exercise" : ex.name) {
                         TextField("Name", text: $ex.name)
+                        if ex.isAmrapPrescription {
+                            Text("Program: AMRAP — enter reps you achieved on each set.")
+                                .font(.caption)
+                                .foregroundStyle(BlueprintTheme.mutedLight)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if ex.isWarmupPrescription {
+                            Text("Program: warm-up / activation — optional; won’t count as unfinished work on quick save.")
+                                .font(.caption)
+                                .foregroundStyle(BlueprintTheme.mutedLight)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let pn = ex.programNotes {
+                            Text("Program notes: \(pn)")
+                                .font(.caption)
+                                .foregroundStyle(BlueprintTheme.mutedLight)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         ForEach($ex.sets) { $s in
                             HStack {
                                 TextField("Weight", text: $s.weight)
@@ -46,7 +64,15 @@ struct LogWorkoutEditorView: View {
                 .onDelete { viewModel.exercises.remove(atOffsets: $0) }
 
                 Button("Add exercise") {
-                    viewModel.exercises.append(DraftExercise(name: "", sets: [DraftSet(weight: "", reps: "")]))
+                    viewModel.exercises.append(
+                        DraftExercise(
+                            name: "",
+                            sets: [DraftSet(weight: "", reps: "")],
+                            isAmrapPrescription: false,
+                            isWarmupPrescription: false,
+                            programNotes: nil
+                        )
+                    )
                 }
             }
 

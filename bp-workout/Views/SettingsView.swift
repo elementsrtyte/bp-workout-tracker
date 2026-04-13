@@ -12,10 +12,11 @@ struct SettingsView: View {
                 Section("Minimum reps per set") {
                     Stepper(value: $appSettings.minReps, in: 1 ... 20) {
                         Text("\(appSettings.minReps) reps")
+                            .foregroundStyle(BlueprintTheme.cream)
                     }
                     Text("Sets below this threshold are excluded from progress charts.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
                     LabeledContent("Sets excluded (estimate)") {
                         Text("\(viewModel.minRepsExcludedCount(loggedWorkouts: loggedWorkouts, appSettings: appSettings))")
                     }
@@ -45,7 +46,7 @@ struct SettingsView: View {
                     Toggle("Program admin (edit bundled plans)", isOn: $appSettings.programAdminMode)
                     Text("When enabled, the Programs tab lets you edit Blueprint bundle plans. Changes are saved on this device only.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
                 }
 
                 Section {
@@ -54,6 +55,8 @@ struct SettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(BlueprintTheme.bg)
             .navigationTitle("Settings")
         }
         .onChange(of: appSettings.filterAnomalies) { _, _ in appSettings.persist() }

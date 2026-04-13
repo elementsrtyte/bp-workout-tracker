@@ -156,23 +156,23 @@ private struct StreakMedalBadge: View {
                     )
                 Image(systemName: medal.systemImage)
                     .font(.title2)
-                    .foregroundStyle(unlocked ? BlueprintTheme.amber : BlueprintTheme.muted.opacity(0.45))
+                    .foregroundStyle(unlocked ? BlueprintTheme.amber : BlueprintTheme.mutedLight.opacity(0.72))
                 if !unlocked {
                     Image(systemName: "lock.fill")
                         .font(.caption2)
-                        .foregroundStyle(BlueprintTheme.muted)
+                        .foregroundStyle(BlueprintTheme.mutedLight.opacity(0.9))
                         .offset(x: 16, y: 16)
                 }
             }
             Text(medal.title)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(unlocked ? BlueprintTheme.cream : BlueprintTheme.muted)
+                .foregroundStyle(unlocked ? BlueprintTheme.cream : BlueprintTheme.mutedLight.opacity(0.88))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .frame(width: 88)
             Text("\(medal.weeksRequired) wk")
                 .font(.caption2.monospacedDigit())
-                .foregroundStyle(BlueprintTheme.muted.opacity(0.9))
+                .foregroundStyle(BlueprintTheme.mutedLight.opacity(0.95))
         }
     }
 }

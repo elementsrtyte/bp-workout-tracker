@@ -239,7 +239,7 @@ private struct ExerciseProgressCard: View {
     private func miniStat(title: String, value: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(title)
-                .foregroundStyle(BlueprintTheme.muted)
+                .foregroundStyle(BlueprintTheme.mutedLight.opacity(0.92))
             Text(value)
                 .foregroundStyle(color)
                 .fontWeight(.semibold)
@@ -306,7 +306,7 @@ private struct InteractiveProgressLineChart: View {
 
                 if let x = selectedX, let entry = nearestEntry(to: x), let d = ProgressMetrics.parseChartDate(entry.date) {
                     RuleMark(x: .value("Selected", x))
-                        .foregroundStyle(BlueprintTheme.lavender.opacity(0.65))
+                        .foregroundStyle(BlueprintTheme.lavender.opacity(0.88))
                         .lineStyle(StrokeStyle(lineWidth: 1))
 
                     if chartMode == .weight {
@@ -333,7 +333,7 @@ private struct InteractiveProgressLineChart: View {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                         .foregroundStyle(BlueprintTheme.border.opacity(0.6))
                     AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                        .foregroundStyle(BlueprintTheme.muted)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
                 }
             }
             .chartYAxis {
@@ -341,7 +341,7 @@ private struct InteractiveProgressLineChart: View {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                         .foregroundStyle(BlueprintTheme.border.opacity(0.6))
                     AxisValueLabel()
-                        .foregroundStyle(BlueprintTheme.muted)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -450,7 +450,7 @@ private struct RepRangeBars: View {
                     .frame(maxWidth: .infinity)
                     Text(pair.bucket.label)
                         .font(.system(size: 9))
-                        .foregroundStyle(BlueprintTheme.muted)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
@@ -474,7 +474,7 @@ private struct FlowRow: View {
                         .padding(.top, 2)
                     Text(pair.bucket.description)
                         .font(.caption2)
-                        .foregroundStyle(BlueprintTheme.muted)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("\(pair.count)")
                         .font(.caption2.weight(.semibold))
