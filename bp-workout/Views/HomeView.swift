@@ -5,7 +5,7 @@ private let heroURL = URL(
     string: "https://d2xsxph8kpxj0f.cloudfront.net/310419663029914027/d4kuLRzxSXM9nrbbRPcbea/hero-banner-CmAYwVoABDY9NRPZkQCsYj.webp"
 )!
 
-/// Primary screen: pick program → day → log sets with PR-aware defaults (minimal typing).
+/// Primary screen: day-first logging; program changes rarely and stays in a compact picker.
 struct WorkoutHubView: View {
     @StateObject private var viewModel = WorkoutHubViewModel()
     @Query(sort: \LoggedWorkout.date, order: .reverse) private var loggedWorkouts: [LoggedWorkout]
@@ -18,16 +18,14 @@ struct WorkoutHubView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 compactHero
-                let programs = viewModel.programs
-                if !programs.isEmpty {
-                    programSection(programs)
+                if !viewModel.programs.isEmpty {
                     dayHeaderAndQuickLog
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         }
         .background(BlueprintTheme.bg)
-        .navigationTitle("Workout")
+        .navigationTitle(viewModel.activeDay?.label ?? "Workout")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -90,14 +88,9 @@ struct WorkoutHubView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Pick a program and day, then tap Log set when the weight and reps match what you did.")
+                Text("Tap Log set when the numbers match what you lifted. Weights fill in from your last session or history.")
                     .font(.subheadline)
                     .foregroundStyle(BlueprintTheme.muted)
-                if let stats = viewModel.stats {
-                    Text("\(stats.totalPrograms) programs · \(stats.totalMonths) months of history · weights default from your last session or bundled PRs.")
-                        .font(.caption2)
-                        .foregroundStyle(BlueprintTheme.muted.opacity(0.9))
-                }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -106,99 +99,100 @@ struct WorkoutHubView: View {
         .clipped()
     }
 
-    private func programSection(_ programs: [WorkoutProgram]) -> some View {
+    private var dayHeaderAndQuickLog: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Program")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(BlueprintTheme.lavender)
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
+            if let p = viewModel.activeProgram {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Program")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(BlueprintTheme.muted)
+                        Spacer(minLength: 0)
+                        if p.isUserCreated == true {
+                            Text("SELF-CREATED")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(BlueprintTheme.mint)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(BlueprintTheme.mint.opacity(0.15))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(programs) { program in
-                        ProgramChip(program: program, isSelected: program.id == viewModel.activeProgramId) {
-                            viewModel.selectProgram(id: program.id)
+                    Picker("Active program", selection: Binding(
+                        get: { viewModel.activeProgramId },
+                        set: { viewModel.selectProgram(id: $0) }
+                    )) {
+                        ForEach(viewModel.programs) { program in
+                            Text(programMenuLabel(program)).tag(program.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(BlueprintTheme.cream)
+                    .padding(.horizontal, 20)
+
+                    Text("\(p.subtitle) · \(p.period)")
+                        .font(.caption)
+                        .foregroundStyle(BlueprintTheme.muted)
+                        .padding(.horizontal, 20)
+
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Training day")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(BlueprintTheme.lavender)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 20)
+
+                    Picker("Training day", selection: Binding(
+                        get: { viewModel.dayIndex },
+                        set: { viewModel.setDayIndex($0) }
+                    )) {
+                        ForEach(Array(p.days.enumerated()), id: \.offset) { i, day in
+                            Text(day.label).tag(i)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(BlueprintTheme.cream)
+                    .padding(.horizontal, 20)
+
+                    if viewModel.dayIndex < p.days.count {
+                        let day = p.days[viewModel.dayIndex]
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Today's session")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(BlueprintTheme.lavender)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 4)
+
+                            ForEach(viewModel.exerciseRows) { row in
+                                QuickLogExerciseCard(row: row, viewModel: viewModel)
+                            }
+                            .padding(.horizontal, 12)
+
+                            DisclosureGroup(isExpanded: $showProgramTargets) {
+                                ExerciseTable(day: day)
+                                    .padding(.top, 8)
+                            } label: {
+                                Text("Program targets (reference)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(BlueprintTheme.mutedLight)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, viewModel.hasLoggedSomething ? 100 : 24)
                         }
                     }
                 }
-                .padding(.horizontal, 20)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .clipped()
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
-    private var dayHeaderAndQuickLog: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let p = viewModel.activeProgram {
-                HStack(alignment: .top, spacing: 8) {
-                    Text(p.name)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(BlueprintTheme.cream)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    if p.isUserCreated == true {
-                        Text("SELF-CREATED")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(BlueprintTheme.mint)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(BlueprintTheme.mint.opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-
-                Text("\(p.subtitle) · \(p.period)")
-                    .font(.caption)
-                    .foregroundStyle(BlueprintTheme.muted)
-                    .padding(.horizontal, 20)
-
-                Picker("Training day", selection: Binding(
-                    get: { viewModel.dayIndex },
-                    set: { viewModel.setDayIndex($0) }
-                )) {
-                    ForEach(Array(p.days.enumerated()), id: \.offset) { i, day in
-                        Text(day.label).tag(i)
-                    }
-                }
-                .pickerStyle(.menu)
-                .padding(.horizontal, 20)
-
-                if viewModel.dayIndex < p.days.count {
-                    let day = p.days[viewModel.dayIndex]
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Today's session")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(BlueprintTheme.lavender)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 4)
-
-                        ForEach(viewModel.exerciseRows) { row in
-                            QuickLogExerciseCard(row: row, viewModel: viewModel)
-                        }
-                        .padding(.horizontal, 12)
-
-                        DisclosureGroup(isExpanded: $showProgramTargets) {
-                            ExerciseTable(day: day)
-                                .padding(.top, 8)
-                        } label: {
-                            Text("Program targets (reference)")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(BlueprintTheme.mutedLight)
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, viewModel.hasLoggedSomething ? 100 : 24)
-                    }
-                }
-            }
-        }
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+    /// Menu rows: name + subtle period so switching programs stays a deliberate, rare action.
+    private func programMenuLabel(_ program: WorkoutProgram) -> String {
+        "\(program.name) · \(program.period)"
     }
 
     private var finishSessionBar: some View {
@@ -256,6 +250,9 @@ private struct QuickLogExerciseCard: View {
                             .font(.caption2)
                             .foregroundStyle(BlueprintTheme.muted)
                     }
+                    Text("\(row.loggedSets.count) / \(row.targetSets) sets")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(row.isSetsComplete ? BlueprintTheme.mint : BlueprintTheme.muted)
                 }
                 Spacer(minLength: 0)
             }
@@ -269,12 +266,13 @@ private struct QuickLogExerciseCard: View {
                 Button {
                     viewModel.logSet(for: row.id)
                 } label: {
-                    Text("Log set")
+                    Text(row.isSetsComplete ? "All sets logged" : "Log set \(row.loggedSets.count + 1) of \(row.targetSets)")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(BlueprintTheme.purple)
+                .disabled(row.isSetsComplete)
 
                 Button {
                     viewModel.repeatLastSet(for: row.id)
@@ -282,7 +280,7 @@ private struct QuickLogExerciseCard: View {
                     Image(systemName: "arrow.uturn.backward")
                 }
                 .buttonStyle(.bordered)
-                .disabled(row.loggedSets.isEmpty)
+                .disabled(row.loggedSets.isEmpty || row.isSetsComplete)
                 .accessibilityLabel("Repeat last set")
 
                 Menu {
@@ -297,7 +295,7 @@ private struct QuickLogExerciseCard: View {
             }
 
             if !row.loggedSets.isEmpty {
-                FlowSetChips(sets: row.loggedSets)
+                FlowSetChips(sets: row.loggedSets, targetSets: row.targetSets)
             }
         }
         .padding(12)
@@ -344,15 +342,16 @@ private struct QuickLogExerciseCard: View {
 
 private struct FlowSetChips: View {
     let sets: [LoggedSetSnapshot]
+    let targetSets: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Logged")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(BlueprintTheme.muted)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 6)], alignment: .leading, spacing: 6) {
-                ForEach(Array(sets.enumerated()), id: \.offset) { _, s in
-                    Text(chipLabel(s))
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 6)], alignment: .leading, spacing: 6) {
+                ForEach(Array(sets.enumerated()), id: \.offset) { i, s in
+                    Text(chipLabel(setIndex: i + 1, s))
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(BlueprintTheme.cream)
                         .padding(.horizontal, 8)
@@ -364,51 +363,16 @@ private struct FlowSetChips: View {
         }
     }
 
-    private func chipLabel(_ s: LoggedSetSnapshot) -> String {
-        if s.weight == 0 { return "BW×\(s.reps)" }
-        return "\(WorkoutPrefill.formatWeight(s.weight))×\(s.reps)"
+    private func chipLabel(setIndex: Int, _ s: LoggedSetSnapshot) -> String {
+        let core: String
+        if s.weight == 0 { core = "BW×\(s.reps)" }
+        else { core = "\(WorkoutPrefill.formatWeight(s.weight))×\(s.reps)" }
+        if targetSets > 1 { return "\(setIndex). \(core)" }
+        return core
     }
 }
 
-// MARK: - Shared program UI
-
-private struct ProgramChip: View {
-    let program: WorkoutProgram
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(program.name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isSelected ? BlueprintTheme.cream : BlueprintTheme.mutedLight)
-                    if program.isUserCreated == true {
-                        Text("SELF")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(BlueprintTheme.mint)
-                    }
-                }
-                Text(program.subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(BlueprintTheme.muted)
-                Text(program.period)
-                    .font(.caption2)
-                    .foregroundStyle(BlueprintTheme.muted)
-            }
-            .padding(12)
-            .frame(width: 200, alignment: .leading)
-            .background(isSelected ? BlueprintTheme.purple.opacity(0.2) : Color.clear)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isSelected ? BlueprintTheme.purple : BlueprintTheme.border, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-    }
-}
+// MARK: - Reference table
 
 private struct ExerciseTable: View {
     let day: WorkoutDay
@@ -420,6 +384,10 @@ private struct ExerciseTable: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(BlueprintTheme.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Sets")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(BlueprintTheme.muted)
+                    .frame(width: 36, alignment: .trailing)
                 Text("Max weight")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(BlueprintTheme.muted)
@@ -444,6 +412,11 @@ private struct ExerciseTable: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .layoutPriority(0)
+
+                    Text("\(ex.prescribedSets)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(BlueprintTheme.mutedLight)
+                        .frame(width: 36, alignment: .trailing)
 
                     Text(ex.maxWeight)
                         .font(.caption.weight(.semibold))

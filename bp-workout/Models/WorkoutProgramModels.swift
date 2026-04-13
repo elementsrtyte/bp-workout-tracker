@@ -4,6 +4,14 @@ struct Exercise: Codable, Hashable, Identifiable {
     var id: String { name }
     let name: String
     let maxWeight: String
+    /// Prescribed working sets for this lift; omit in JSON to default to 3.
+    let targetSets: Int?
+
+    /// Clamped prescription used for logging UI (1…20).
+    var prescribedSets: Int {
+        let n = targetSets ?? 3
+        return max(1, min(n, 20))
+    }
 }
 
 struct WorkoutDay: Codable, Hashable, Identifiable {

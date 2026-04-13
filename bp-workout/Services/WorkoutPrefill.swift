@@ -4,7 +4,7 @@ enum WorkoutPrefill {
     struct Suggestion: Equatable {
         var weight: Double
         var reps: Int
-        /// Short label for PR / target context (e.g. "Peak 160 lb").
+        /// Short label for PR / target context (e.g. "Peak 160 lb × 8").
         var prHint: String?
     }
 
@@ -61,6 +61,10 @@ enum WorkoutPrefill {
                 if tpl.reps > 0, tpl.weight == 0 { return "Hold / BW" }
                 return nil
             }
+            let peakReps = repsAtPeakWeight(p)
+            if let r = peakReps, r > 0 {
+                return "Peak \(formatWeight(p.peakWeight)) lb × \(r)"
+            }
             return "Peak \(formatWeight(p.peakWeight)) lb"
         }()
 
@@ -96,5 +100,14 @@ enum WorkoutPrefill {
         let pattern = #"[0-9]+(?:\.[0-9]+)?"#
         guard let range = raw.range(of: pattern, options: .regularExpression) else { return nil }
         return Double(raw[range])
+    }
+
+    /// Best rep count achieved at the exercise’s peak load (handles multiple sets at the same weight).
+    private static func repsAtPeakWeight(_ p: ExerciseProgress) -> Int? {
+        guard p.peakWeight > 0 else { return nil }
+        let peak = p.peakWeight
+        let atPeak = p.entries.filter { abs($0.weight - peak) < 0.01 }
+        guard !atPeak.isEmpty else { return nil }
+        return atPeak.map(\.reps).max()
     }
 }

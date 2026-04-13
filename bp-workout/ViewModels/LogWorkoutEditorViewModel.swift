@@ -53,7 +53,10 @@ final class LogWorkoutEditorViewModel: ObservableObject {
                 progressBundle: progress
             )
             let wStr = sug.weight == 0 ? "0" : WorkoutPrefill.formatWeight(sug.weight)
-            return DraftExercise(name: ex.name, sets: [DraftSet(weight: wStr, reps: "\(sug.reps)")])
+            let rStr = "\(sug.reps)"
+            let n = ex.prescribedSets
+            let sets = (0 ..< n).map { _ in DraftSet(weight: wStr, reps: rStr) }
+            return DraftExercise(name: ex.name, sets: sets)
         }
     }
 

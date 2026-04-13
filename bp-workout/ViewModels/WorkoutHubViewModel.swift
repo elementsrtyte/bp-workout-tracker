@@ -12,10 +12,15 @@ struct QuickExerciseState: Identifiable, Equatable {
     let sortOrder: Int
     let name: String
     let templateMaxLabel: String
+    /// Working sets prescribed by the program for this exercise.
+    let targetSets: Int
     var workingWeight: Double
     var workingReps: Int
     var loggedSets: [LoggedSetSnapshot]
     let prHint: String?
+
+    var setsRemaining: Int { max(0, targetSets - loggedSets.count) }
+    var isSetsComplete: Bool { loggedSets.count >= targetSets }
 }
 
 @MainActor
@@ -29,8 +34,13 @@ final class WorkoutHubViewModel: ObservableObject {
 
     private enum DefaultsKey {
         static let programId = "workoutHub.activeProgramId"
+        /// Legacy single day index; used as fallback until a per-program value exists.
         static let dayIndex = "workoutHub.dayIndex"
         static let draft = "workoutHub.draft.v1"
+
+        static func dayIndexKey(programId: String) -> String {
+            "workoutHub.dayIndex.program.\(programId)"
+        }
     }
 
     private struct PersistedDraft: Codable, Equatable {
@@ -85,9 +95,10 @@ final class WorkoutHubViewModel: ObservableObject {
             activeProgramId = first.id
             d.set(first.id, forKey: DefaultsKey.programId)
         }
-        let savedDay = d.integer(forKey: DefaultsKey.dayIndex)
-        if let p = activeProgram, savedDay >= 0, savedDay < p.days.count {
-            dayIndex = savedDay
+        if let p = activeProgram {
+            let saved = restoredDayIndex(forProgramId: activeProgramId)
+            dayIndex = clampDayIndex(saved, days: p.days.count)
+            d.set(dayIndex, forKey: DefaultsKey.dayIndexKey(programId: activeProgramId))
         }
         rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
     }
@@ -99,18 +110,23 @@ final class WorkoutHubViewModel: ObservableObject {
 
     func selectProgram(id: String) {
         guard id != activeProgramId else { return }
-        activeProgramId = id
-        dayIndex = 0
-        UserDefaults.standard.set(id, forKey: DefaultsKey.programId)
-        UserDefaults.standard.set(0, forKey: DefaultsKey.dayIndex)
         clearDraft()
+        activeProgramId = id
+        UserDefaults.standard.set(id, forKey: DefaultsKey.programId)
+        let days = programs.first(where: { $0.id == id })?.days.count ?? 0
+        let saved = restoredDayIndex(forProgramId: id)
+        dayIndex = clampDayIndex(saved, days: days)
+        UserDefaults.standard.set(dayIndex, forKey: DefaultsKey.dayIndexKey(programId: id))
         rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
     }
 
     func setDayIndex(_ index: Int) {
-        guard index != dayIndex else { return }
-        dayIndex = index
-        UserDefaults.standard.set(index, forKey: DefaultsKey.dayIndex)
+        guard let p = activeProgram else { return }
+        let next = clampDayIndex(index, days: p.days.count)
+        guard next != dayIndex else { return }
+        dayIndex = next
+        UserDefaults.standard.set(next, forKey: DefaultsKey.dayIndexKey(programId: activeProgramId))
+        UserDefaults.standard.set(next, forKey: DefaultsKey.dayIndex)
         clearDraft()
         rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
     }
@@ -130,6 +146,7 @@ final class WorkoutHubViewModel: ObservableObject {
 
     func logSet(for rowId: String) {
         guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
+        guard exerciseRows[i].loggedSets.count < exerciseRows[i].targetSets else { return }
         let w = exerciseRows[i].workingWeight
         let r = exerciseRows[i].workingReps
         guard r > 0 else { return }
@@ -139,6 +156,7 @@ final class WorkoutHubViewModel: ObservableObject {
 
     func repeatLastSet(for rowId: String) {
         guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
+        guard exerciseRows[i].loggedSets.count < exerciseRows[i].targetSets else { return }
         guard let last = exerciseRows[i].loggedSets.last else { return }
         exerciseRows[i].workingWeight = last.weight
         exerciseRows[i].workingReps = last.reps
@@ -199,10 +217,12 @@ final class WorkoutHubViewModel: ObservableObject {
                 loggedWorkouts: logged,
                 progressBundle: bundleData
             )
+            let prescribed = ex.prescribedSets
             var state = QuickExerciseState(
                 sortOrder: idx,
                 name: ex.name,
                 templateMaxLabel: ex.maxWeight,
+                targetSets: prescribed,
                 workingWeight: sug.weight,
                 workingReps: sug.reps,
                 loggedSets: [],
@@ -212,7 +232,8 @@ final class WorkoutHubViewModel: ObservableObject {
                let line = draft.lines.first(where: { $0.exerciseName == ex.name && $0.sortOrder == idx }) {
                 state.workingWeight = line.workingWeight
                 state.workingReps = line.workingReps
-                state.loggedSets = line.sets.map { LoggedSetSnapshot(weight: $0.weight, reps: $0.reps) }
+                let loaded = line.sets.map { LoggedSetSnapshot(weight: $0.weight, reps: $0.reps) }
+                state.loggedSets = Array(loaded.prefix(prescribed))
             }
             rows.append(state)
         }
@@ -243,5 +264,19 @@ final class WorkoutHubViewModel: ObservableObject {
 
     private func clearDraft() {
         UserDefaults.standard.removeObject(forKey: DefaultsKey.draft)
+    }
+
+    private func restoredDayIndex(forProgramId id: String) -> Int {
+        let d = UserDefaults.standard
+        let key = DefaultsKey.dayIndexKey(programId: id)
+        if d.object(forKey: key) != nil {
+            return d.integer(forKey: key)
+        }
+        return d.integer(forKey: DefaultsKey.dayIndex)
+    }
+
+    private func clampDayIndex(_ index: Int, days: Int) -> Int {
+        guard days > 0 else { return 0 }
+        return min(max(0, index), days - 1)
     }
 }
