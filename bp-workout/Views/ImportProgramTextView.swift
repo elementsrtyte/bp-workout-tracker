@@ -78,6 +78,7 @@ struct ImportProgramTextView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("Import from text")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -106,6 +107,7 @@ struct ImportProgramTextView: View {
                     errorMessage = err.localizedDescription
                 }
             }
+            .tint(BlueprintTheme.purple)
         }
     }
 

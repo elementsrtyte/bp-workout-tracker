@@ -36,11 +36,13 @@ struct WorkoutHubView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             finishSessionBar
         }
+        .blueprintDismissKeyboardOnScroll()
         .sheet(item: $exerciseHistoryItem) { item in
             NavigationStack {
                 ExerciseHistoryView(exerciseName: item.name, loggedWorkouts: loggedWorkouts)
                     .environmentObject(appSettings)
             }
+            .tint(BlueprintTheme.purple)
         }
         .onAppear {
             viewModel.onAppear()

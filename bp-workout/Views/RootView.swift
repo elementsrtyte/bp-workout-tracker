@@ -11,6 +11,7 @@ struct RootView: View {
             NavigationStack {
                 WorkoutHubView()
             }
+            .tint(BlueprintTheme.purple)
             .tabItem { Label("Workout", systemImage: "figure.strengthtraining.traditional") }
 
             ProgressTrackerView()
@@ -26,7 +27,6 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .tint(BlueprintTheme.purple)
-        .preferredColorScheme(.dark)
         .task {
             await SupabaseSessionManager.shared.ensureSession()
             await bundle.refreshCatalogFromServer()

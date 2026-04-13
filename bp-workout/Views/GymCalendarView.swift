@@ -93,7 +93,9 @@ struct GymCalendarView: View {
             }
             .frame(maxWidth: .infinity)
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("Calendar")
+            .tint(BlueprintTheme.purple)
         }
     }
 

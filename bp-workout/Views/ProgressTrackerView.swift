@@ -52,7 +52,9 @@ struct ProgressTrackerView: View {
             .onPreferenceChange(ProgressScrollTopOffsetKey.self, perform: updateSearchVisibility(topOffset:))
             .frame(maxWidth: .infinity)
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("Progress")
+            .tint(BlueprintTheme.purple)
             .searchable(text: $viewModel.search, isPresented: $searchPresented, prompt: "Search exercises")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

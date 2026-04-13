@@ -9,8 +9,8 @@ export async function fetchSupabaseAuthUser(
   const token = authorization.slice(7).trim();
   if (!token) throw new HttpError(401, "Empty bearer token");
 
-  const supabaseUrl = requireEnv("SUPABASE_URL").replace(/\/$/, "");
-  const anon = requireEnv("SUPABASE_ANON_KEY");
+   const supabaseUrl = requireEnvAny("SUPABASE_URL", "supabase_url").replace(/\/$/, "");
+  const anon = requireEnvAny("SUPABASE_ANON_KEY", "supabase_anon_key");
 
   const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: {
@@ -29,18 +29,20 @@ export async function fetchSupabaseAuthUser(
   return { id: j.id };
 }
 
-function requireEnv(name: string): string {
-  const v = process.env[name]?.trim();
-  if (!v) throw new Error(`Missing required env: ${name}`);
-  return v;
+function requireEnvAny(...names: string[]): string {
+  for (const name of names) {
+    const v = process.env[name]?.trim();
+    if (v) return v;
+  }
+  throw new Error(`Missing required env: ${names.join(" or ")}`);
 }
 
 export function supabaseRestBase(): string {
-  return `${requireEnv("SUPABASE_URL").replace(/\/$/, "")}/rest/v1`;
+  return `${requireEnvAny("SUPABASE_URL", "supabase_url").replace(/\/$/, "")}/rest/v1`;
 }
 
 export function supabaseAnonKey(): string {
-  return requireEnv("SUPABASE_ANON_KEY");
+  return requireEnvAny("SUPABASE_ANON_KEY", "supabase_anon_key");
 }
 
 /** PostgREST request; `jwt` is user access token or anon JWT for public reads. */

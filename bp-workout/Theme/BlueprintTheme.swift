@@ -17,3 +17,11 @@ enum BlueprintTheme {
     static let danger = Color(red: 0.753, green: 0.314, blue: 0.314)
     static let userProgramColor = Color(red: 0.4, green: 0.75, blue: 0.85)
 }
+
+extension View {
+    /// Lets the user drag-scroll to dismiss the keyboard. This avoids some first-responder churn that triggers
+    /// noisy UIKit warnings (`_UIRemoteKeyboardPlaceholderView` vs `_UIKBCompatInputView`) on recent iOS builds.
+    func blueprintDismissKeyboardOnScroll() -> some View {
+        scrollDismissesKeyboard(.interactively)
+    }
+}

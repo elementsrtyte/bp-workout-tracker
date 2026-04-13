@@ -80,11 +80,14 @@ struct ExerciseHistoryView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(BlueprintTheme.bg)
+        .blueprintDismissKeyboardOnScroll()
         .navigationTitle(exerciseName)
         .navigationBarTitleDisplayMode(.inline)
+        .tint(BlueprintTheme.purple)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }
+                    .foregroundStyle(BlueprintTheme.lavender)
             }
         }
     }

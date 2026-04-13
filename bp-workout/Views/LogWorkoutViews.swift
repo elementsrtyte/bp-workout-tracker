@@ -16,13 +16,16 @@ struct LogWorkoutEditorView: View {
             Section("Session") {
                 BlueprintCompactDatePicker(title: "Date", date: $viewModel.date)
                 TextField("Program (optional)", text: $viewModel.programName)
+                    .foregroundStyle(BlueprintTheme.cream)
                 TextField("Day / focus (optional)", text: $viewModel.dayLabel)
+                    .foregroundStyle(BlueprintTheme.cream)
             }
 
             Section("Exercises") {
                 ForEach($viewModel.exercises) { $ex in
                     DisclosureGroup(ex.name.isEmpty ? "Exercise" : ex.name) {
                         TextField("Name", text: $ex.name)
+                            .foregroundStyle(BlueprintTheme.cream)
                         if ex.isAmrapPrescription {
                             Text("Program: AMRAP — enter reps you achieved on each set.")
                                 .font(.caption)
@@ -44,10 +47,12 @@ struct LogWorkoutEditorView: View {
                         ForEach($ex.sets) { $s in
                             HStack {
                                 TextField("Weight", text: $s.weight)
+                                    .foregroundStyle(BlueprintTheme.cream)
                                 #if os(iOS)
                                     .keyboardType(.decimalPad)
                                 #endif
                                 TextField("Reps", text: $s.reps)
+                                    .foregroundStyle(BlueprintTheme.cream)
                                 #if os(iOS)
                                     .keyboardType(.numberPad)
                                 #endif
@@ -78,20 +83,25 @@ struct LogWorkoutEditorView: View {
 
             Section("Notes") {
                 TextField("Notes", text: $viewModel.notes, axis: .vertical)
+                    .foregroundStyle(BlueprintTheme.cream)
             }
         }
         .scrollContentBackground(.hidden)
         .background(BlueprintTheme.bg)
+        .blueprintDismissKeyboardOnScroll()
+        .tint(BlueprintTheme.purple)
         .navigationTitle("New workout")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
+                    .foregroundStyle(BlueprintTheme.lavender)
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
                     viewModel.save(modelContext: modelContext, onComplete: { dismiss() })
                 }
                 .disabled(!viewModel.canSave)
+                .foregroundStyle(viewModel.canSave ? BlueprintTheme.cream : BlueprintTheme.muted)
             }
         }
         .onAppear { viewModel.onAppear(loggedWorkoutsForPrefill: loggedWorkouts) }

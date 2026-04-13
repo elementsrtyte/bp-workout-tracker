@@ -442,6 +442,7 @@ struct ProgramEditorView: View {
             .padding(.bottom, 28)
         }
         .background(BlueprintTheme.bg)
+        .blueprintDismissKeyboardOnScroll()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -700,6 +701,7 @@ struct ProgramEditorView: View {
                         .foregroundStyle(BlueprintTheme.cream)
                         .frame(minWidth: 24, alignment: .trailing)
                 }
+                .tint(BlueprintTheme.lavender)
             }
             .padding(.horizontal, 4)
 
@@ -858,6 +860,7 @@ struct ProgramEditorView: View {
                                 HStack(spacing: 8) {
                                     if aiRelatedLoading == fieldID {
                                         ProgressView()
+                                            .tint(BlueprintTheme.lavender)
                                     }
                                     Text(aiRelatedLoading == fieldID ? "Loading…" : "Suggest related exercises")
                                         .font(.subheadline.weight(.semibold))

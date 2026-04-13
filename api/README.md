@@ -12,6 +12,8 @@ npm install
 npm run dev
 ```
 
+`npm run dev` and `npm run start` both load **`api/.env`** automatically (via `dotenv`). Run commands from the **`api`** directory so the file is found. Variable names are **`SUPABASE_ANON_KEY`** (uppercase) unless you use the supported alias **`supabase_anon_key`**.
+
 Default port **8787**. The iOS `MergedConfig-Info.plist` sets `BLUEPRINT_API_URL` to `http://127.0.0.1:8787` for local dev.
 
 ## Endpoints

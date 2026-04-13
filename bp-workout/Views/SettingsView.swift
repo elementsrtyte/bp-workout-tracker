@@ -73,7 +73,9 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("Settings")
+            .tint(BlueprintTheme.purple)
         }
         .onChange(of: appSettings.filterAnomalies) { _, _ in appSettings.persist() }
         .onChange(of: appSettings.anomalySensitivity) { _, _ in appSettings.persist() }

@@ -80,7 +80,10 @@ struct ExerciseSubstitutionSheet: View {
                             Task { await loadAI() }
                         } label: {
                             HStack {
-                                if aiLoading { ProgressView() }
+                                if aiLoading {
+                                    ProgressView()
+                                        .tint(BlueprintTheme.lavender)
+                                }
                                 Text(aiLoading ? "Loading…" : "Suggest alternatives")
                             }
                         }
@@ -119,6 +122,7 @@ struct ExerciseSubstitutionSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("Swap exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -149,6 +153,7 @@ struct ExerciseSubstitutionSheet: View {
             } message: {
                 Text("You’ve already logged sets for this slot. Swapping exercises clears them for this session.")
             }
+            .tint(BlueprintTheme.purple)
         }
     }
 

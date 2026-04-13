@@ -78,8 +78,6 @@ struct AuthRootView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
-        .tint(BlueprintTheme.purple)
         .task {
             await auth.bootstrap()
         }
@@ -187,6 +185,7 @@ private struct AuthLoginView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
@@ -327,6 +326,7 @@ private struct AuthSignUpView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("Sign up")
             .navigationBarTitleDisplayMode(.inline)
             .tint(BlueprintTheme.purple)
@@ -448,6 +448,7 @@ private struct AuthForgotPasswordView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("Reset")
             .navigationBarTitleDisplayMode(.inline)
             .tint(BlueprintTheme.purple)
@@ -549,6 +550,7 @@ private struct AuthSetNewPasswordView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .tint(BlueprintTheme.purple)

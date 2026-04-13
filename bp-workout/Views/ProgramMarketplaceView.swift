@@ -19,7 +19,6 @@ struct ProgramMarketplaceView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    introCard
                     catalogStatusBanner
 
                     LazyVStack(spacing: 12) {
@@ -34,6 +33,7 @@ struct ProgramMarketplaceView: View {
             }
             .frame(maxWidth: .infinity)
             .background(BlueprintTheme.bg)
+            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("Programs")
             .searchable(text: $search, prompt: "Search programs")
             .toolbar {
@@ -53,6 +53,7 @@ struct ProgramMarketplaceView: View {
                     .accessibilityLabel("New program")
                 }
             }
+            .tint(BlueprintTheme.purple)
         }
         .onAppear { bundle.loadIfNeeded() }
         .sheet(isPresented: $importFromTextPresented) {
@@ -93,6 +94,7 @@ struct ProgramMarketplaceView: View {
                 ProgramEditorView(route: route)
                     .environmentObject(programLibrary)
             }
+            .tint(BlueprintTheme.purple)
         }
         .confirmationDialog(
             "Delete this program?",
@@ -162,6 +164,7 @@ struct ProgramMarketplaceView: View {
         if bundle.isRefreshingCatalog {
             HStack(spacing: 10) {
                 ProgressView()
+                    .tint(BlueprintTheme.lavender)
                 Text("Updating catalog…")
                     .font(.caption)
                     .foregroundStyle(BlueprintTheme.mutedLight)
