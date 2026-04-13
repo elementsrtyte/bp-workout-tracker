@@ -29,6 +29,9 @@ struct WorkoutProgram: Codable, Hashable, Identifiable {
     let days: [WorkoutDay]
     let color: String
     let isUserCreated: Bool?
+
+    /// Marketplace accent when the program editor does not expose a custom color.
+    static let defaultAccentHex = "#66bfcc"
 }
 
 struct ProgramStats: Codable, Hashable {

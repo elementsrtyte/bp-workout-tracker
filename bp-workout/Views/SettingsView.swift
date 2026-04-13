@@ -41,6 +41,13 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Programs") {
+                    Toggle("Program admin (edit bundled plans)", isOn: $appSettings.programAdminMode)
+                    Text("When enabled, the Programs tab lets you edit Blueprint bundle plans. Changes are saved on this device only.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section {
                     Button("Reset settings to defaults", role: .destructive) {
                         appSettings.reset()
@@ -52,6 +59,7 @@ struct SettingsView: View {
         .onChange(of: appSettings.filterAnomalies) { _, _ in appSettings.persist() }
         .onChange(of: appSettings.anomalySensitivity) { _, _ in appSettings.persist() }
         .onChange(of: appSettings.minReps) { _, _ in appSettings.persist() }
+        .onChange(of: appSettings.programAdminMode) { _, _ in appSettings.persist() }
         .onAppear { viewModel.onAppear() }
     }
 }

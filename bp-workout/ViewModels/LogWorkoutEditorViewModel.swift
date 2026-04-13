@@ -38,8 +38,8 @@ final class LogWorkoutEditorViewModel: ObservableObject {
         guard let t = template, exercises.isEmpty else { return }
         if let pn = t.programName { programName = pn }
         if let dl = t.dayLabel { dayLabel = dl }
-        guard let programs = bundle.workoutPrograms?.programs,
-              let programName = t.programName,
+        let programs = bundle.mergedPrograms
+        guard let programName = t.programName,
               let dayLabel = t.dayLabel,
               let p = programs.first(where: { $0.name == programName }),
               let day = p.days.first(where: { $0.label == dayLabel })

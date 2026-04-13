@@ -13,7 +13,7 @@ struct GymCalendarView: View {
     private var streakSnapshot: WorkoutWeeklyStreakEngine.Snapshot {
         let bundle = BundleDataStore.shared
         bundle.loadIfNeeded()
-        let programs = bundle.workoutPrograms?.programs ?? []
+        let programs = bundle.mergedPrograms
         let id = UserDefaults.standard.string(forKey: "workoutHub.activeProgramId") ?? ""
         let program = programs.first { $0.id == id }
         return WorkoutWeeklyStreakEngine.snapshot(

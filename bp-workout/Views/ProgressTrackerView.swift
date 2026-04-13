@@ -7,6 +7,9 @@ struct ProgressTrackerView: View {
     @EnvironmentObject private var appSettings: AppSettings
     @Query(sort: \LoggedWorkout.date, order: .reverse) private var loggedWorkouts: [LoggedWorkout]
 
+    @State private var searchPresented = false
+    @State private var hasScrolledAwayFromTop = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -24,6 +27,14 @@ struct ProgressTrackerView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: ProgressScrollTopOffsetKey.self,
+                            value: geo.frame(in: .named("progressScroll")).minY
+                        )
+                    }
+                )
 
                 LazyVStack(spacing: 12) {
                     ForEach(rows) { row in
@@ -38,10 +49,12 @@ struct ProgressTrackerView: View {
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .coordinateSpace(name: "progressScroll")
+            .onPreferenceChange(ProgressScrollTopOffsetKey.self, perform: updateSearchVisibility(topOffset:))
             .frame(maxWidth: .infinity)
             .background(BlueprintTheme.bg)
             .navigationTitle("Progress")
-            .searchable(text: $viewModel.search, prompt: "Search exercises")
+            .searchable(text: $viewModel.search, isPresented: $searchPresented, prompt: "Search exercises")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu("Sort") {
@@ -70,6 +83,37 @@ struct ProgressTrackerView: View {
 
     private var rows: [ProgressExerciseRow] {
         viewModel.filteredRows(loggedWorkouts: loggedWorkouts, appSettings: appSettings)
+    }
+
+    /// Reveal search when the user pulls down slightly or scrolls back near the top after browsing the list.
+    private func updateSearchVisibility(topOffset: CGFloat) {
+        if topOffset > 6 {
+            if !searchPresented {
+                searchPresented = true
+            }
+            return
+        }
+        if topOffset < -56 {
+            if !hasScrolledAwayFromTop {
+                hasScrolledAwayFromTop = true
+            }
+            if searchPresented {
+                searchPresented = false
+            }
+            return
+        }
+        if hasScrolledAwayFromTop, topOffset > -24 {
+            if !searchPresented {
+                searchPresented = true
+            }
+        }
+    }
+}
+
+private enum ProgressScrollTopOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -240,7 +284,7 @@ private struct InteractiveProgressLineChart: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        VStack(alignment: .leading, spacing: 8) {
             Chart {
                 ForEach(Array(datedEntries.enumerated()), id: \.offset) { _, pair in
                     let d = pair.date
@@ -303,31 +347,36 @@ private struct InteractiveProgressLineChart: View {
             .frame(maxWidth: .infinity)
             .frame(height: 148)
 
-            VStack(spacing: 0) {
-                Group {
-                    if let entry = selectedEntry {
-                        scrubCallout(for: entry)
-                    } else {
-                        Text("Drag along the chart for date and values")
-                            .font(.caption2)
-                            .foregroundStyle(BlueprintTheme.muted.opacity(0.85))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    }
-                }
-                .frame(height: 54, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(8)
-            .allowsHitTesting(false)
+            scrubReadoutStrip
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 148)
     }
 
-    private func scrubCallout(for entry: ProgressEntry) -> some View {
+    /// Fixed-height strip under the plot so scrub values never cover the chart and layout doesn’t jump.
+    private var scrubReadoutStrip: some View {
+        Group {
+            if let entry = selectedEntry {
+                scrubReadoutContent(for: entry)
+                    .frame(height: 52, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(BlueprintTheme.cardInner)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(BlueprintTheme.border, lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Color.clear
+                    .frame(height: 52)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+        }
+    }
+
+    private func scrubReadoutContent(for entry: ProgressEntry) -> some View {
         let primary: String
         let secondary: String?
         if chartMode == .weight {
@@ -339,35 +388,26 @@ private struct InteractiveProgressLineChart: View {
             secondary = "\(formatWeight(entry.weight)) lb × \(entry.reps) · vol \(formatVol(v))"
         }
 
-        return HStack(alignment: .firstTextBaseline, spacing: 6) {
+        return HStack(alignment: .center, spacing: 8) {
             Image(systemName: "scope")
-                .font(.caption2.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(BlueprintTheme.lavender)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(primary)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(BlueprintTheme.cream)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 if let secondary {
                     Text(secondary)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(BlueprintTheme.mutedLight)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.75)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(BlueprintTheme.cardInner.opacity(0.94))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(BlueprintTheme.border, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
     }
 
     private func tooltipDateString(_ yyyyMMdd: String) -> String {

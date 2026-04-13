@@ -65,9 +65,9 @@ final class WorkoutHubViewModel: ObservableObject {
         self.bundle = bundle
     }
 
-    /// Full catalog from the app bundle (marketplace / progress data).
+    /// Full catalog: bundled programs, admin overrides, and user-created programs.
     var allPrograms: [WorkoutProgram] {
-        bundle.workoutPrograms?.programs ?? []
+        bundle.mergedPrograms
     }
 
     /// Programs the user added to their profile (Workout tab).
@@ -129,6 +129,12 @@ final class WorkoutHubViewModel: ObservableObject {
 
     /// Call when profile library membership changes (e.g. Programs tab).
     func onLibraryChanged() {
+        reconcileActiveProgramSelection()
+        rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
+    }
+
+    /// Call when merged program catalog changes (custom programs or bundled overrides).
+    func onCatalogChanged() {
         reconcileActiveProgramSelection()
         rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
     }

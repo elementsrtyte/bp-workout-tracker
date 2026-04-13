@@ -8,6 +8,7 @@ struct WorkoutHubView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var appSettings: AppSettings
     @EnvironmentObject private var programLibrary: UserProgramLibrary
+    @ObservedObject private var bundleData = BundleDataStore.shared
 
     @State private var showProgramTargets = false
     @State private var editorTemplate: LogWorkoutTemplate?
@@ -80,6 +81,9 @@ struct WorkoutHubView: View {
         .onChange(of: programLibrary.updateCounter) { _, _ in
             viewModel.onLibraryChanged()
         }
+        .onChange(of: bundleData.userProgramsRevision) { _, _ in
+            viewModel.onCatalogChanged()
+        }
         .confirmationDialog(
             "Workout not finished",
             isPresented: $showIncompleteSaveConfirm,
@@ -142,10 +146,12 @@ struct WorkoutHubView: View {
                     .tint(BlueprintTheme.cream)
                     .padding(.horizontal, 20)
 
-                    Text("\(p.subtitle) · \(p.period)")
-                        .font(.caption)
-                        .foregroundStyle(BlueprintTheme.muted)
-                        .padding(.horizontal, 20)
+                    if !p.subtitle.isEmpty {
+                        Text(p.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(BlueprintTheme.muted)
+                            .padding(.horizontal, 20)
+                    }
 
                     WeeklyStreakTeaser(
                         snapshot: WorkoutWeeklyStreakEngine.snapshot(
@@ -215,9 +221,9 @@ struct WorkoutHubView: View {
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Menu rows: name + subtle period so switching programs stays a deliberate, rare action.
+    /// Menu rows: name + subtitle when present so switching programs stays a deliberate, rare action.
     private func programMenuLabel(_ program: WorkoutProgram) -> String {
-        "\(program.name) · \(program.period)"
+        program.subtitle.isEmpty ? program.name : "\(program.name) · \(program.subtitle)"
     }
 
     @ViewBuilder
@@ -481,17 +487,26 @@ private struct ExerciseTable: View {
                         .foregroundStyle(BlueprintTheme.mutedLight)
                         .frame(width: 36, alignment: .trailing)
 
-                    Text(ex.maxWeight)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(isBodyweight(ex.maxWeight) ? BlueprintTheme.muted : BlueprintTheme.lavender)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(isBodyweight(ex.maxWeight) ? Color.white.opacity(0.05) : BlueprintTheme.purple.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.trailing)
-                        .layoutPriority(1)
-                        .fixedSize(horizontal: true, vertical: true)
+                    Group {
+                        let plan = ex.maxWeight.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if plan.isEmpty {
+                            Text("—")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(BlueprintTheme.muted)
+                        } else {
+                            Text(plan)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(isBodyweight(plan) ? BlueprintTheme.muted : BlueprintTheme.lavender)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(planMaxChipBackground(ex.maxWeight))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+                    .layoutPriority(1)
+                    .fixedSize(horizontal: true, vertical: true)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -509,5 +524,13 @@ private struct ExerciseTable: View {
 
     private func isBodyweight(_ s: String) -> Bool {
         s.lowercased().contains("bodyweight")
+    }
+
+    private func planMaxChipBackground(_ raw: String) -> Color {
+        let plan = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if plan.isEmpty || isBodyweight(plan) {
+            return Color.white.opacity(0.05)
+        }
+        return BlueprintTheme.purple.opacity(0.12)
     }
 }

@@ -8,6 +8,8 @@ final class AppSettings: ObservableObject {
     @Published var filterAnomalies: Bool
     @Published var anomalySensitivity: AnomalySensitivity
     @Published var minReps: Int
+    /// When on, bundled programs can be edited from the Programs tab (stored as local overrides).
+    @Published var programAdminMode: Bool
 
     init() {
         if let data = UserDefaults.standard.data(forKey: storageKey),
@@ -15,10 +17,12 @@ final class AppSettings: ObservableObject {
             filterAnomalies = decoded.filterAnomalies
             anomalySensitivity = decoded.anomalySensitivity
             minReps = decoded.minReps
+            programAdminMode = decoded.programAdminMode ?? false
         } else {
             filterAnomalies = true
             anomalySensitivity = .medium
             minReps = 5
+            programAdminMode = false
         }
     }
 
@@ -26,10 +30,16 @@ final class AppSettings: ObservableObject {
         var filterAnomalies: Bool
         var anomalySensitivity: AnomalySensitivity
         var minReps: Int
+        var programAdminMode: Bool?
     }
 
     func persist() {
-        let p = Persisted(filterAnomalies: filterAnomalies, anomalySensitivity: anomalySensitivity, minReps: minReps)
+        let p = Persisted(
+            filterAnomalies: filterAnomalies,
+            anomalySensitivity: anomalySensitivity,
+            minReps: minReps,
+            programAdminMode: programAdminMode
+        )
         if let data = try? JSONEncoder().encode(p) {
             UserDefaults.standard.set(data, forKey: storageKey)
         }
@@ -39,6 +49,7 @@ final class AppSettings: ObservableObject {
         filterAnomalies = true
         anomalySensitivity = .medium
         minReps = 5
+        programAdminMode = false
         persist()
     }
 }
