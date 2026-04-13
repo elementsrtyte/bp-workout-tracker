@@ -11,5 +11,6 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environmentObject(AppSettings())
+        .environmentObject(UserProgramLibrary.shared)
         .modelContainer(for: [LoggedWorkout.self, LoggedExercise.self, LoggedSet.self], inMemory: true)
 }

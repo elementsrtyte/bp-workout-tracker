@@ -1,25 +1,27 @@
 import SwiftData
 import SwiftUI
 
-private let heroURL = URL(
-    string: "https://d2xsxph8kpxj0f.cloudfront.net/310419663029914027/d4kuLRzxSXM9nrbbRPcbea/hero-banner-CmAYwVoABDY9NRPZkQCsYj.webp"
-)!
-
 /// Primary screen: day-first logging; program changes rarely and stays in a compact picker.
 struct WorkoutHubView: View {
     @StateObject private var viewModel = WorkoutHubViewModel()
     @Query(sort: \LoggedWorkout.date, order: .reverse) private var loggedWorkouts: [LoggedWorkout]
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appSettings: AppSettings
+    @EnvironmentObject private var programLibrary: UserProgramLibrary
 
     @State private var showProgramTargets = false
     @State private var editorTemplate: LogWorkoutTemplate?
+    @State private var showIncompleteSaveConfirm = false
+    @State private var exerciseHistoryItem: ExerciseHistorySheetItem?
+    @State private var showBlankWorkoutEditor = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                compactHero
                 if !viewModel.programs.isEmpty {
                     dayHeaderAndQuickLog
+                } else {
+                    emptyProfileProgramsCallout
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -33,6 +35,12 @@ struct WorkoutHubView: View {
                     Menu {
                         Button("Open detailed editor") {
                             editorTemplate = LogWorkoutTemplate(programName: p.name, dayLabel: day.label)
+                        }
+                        Button("New blank workout") {
+                            showBlankWorkoutEditor = true
+                        }
+                        Button("Log from program…") {
+                            editorTemplate = LogWorkoutTemplate(programName: nil, dayLabel: nil)
                         }
                         Button("Discard in-progress session", role: .destructive) {
                             viewModel.discardSession()
@@ -51,6 +59,17 @@ struct WorkoutHubView: View {
                 LogWorkoutEditorView(template: tpl)
             }
         }
+        .sheet(isPresented: $showBlankWorkoutEditor) {
+            NavigationStack {
+                LogWorkoutEditorView(template: nil)
+            }
+        }
+        .sheet(item: $exerciseHistoryItem) { item in
+            NavigationStack {
+                ExerciseHistoryView(exerciseName: item.name, loggedWorkouts: loggedWorkouts)
+                    .environmentObject(appSettings)
+            }
+        }
         .onAppear {
             viewModel.onAppear()
             viewModel.syncLoggedWorkouts(loggedWorkouts)
@@ -58,45 +77,35 @@ struct WorkoutHubView: View {
         .onChange(of: loggedWorkouts.count) { _, _ in
             viewModel.syncLoggedWorkouts(loggedWorkouts)
         }
+        .onChange(of: programLibrary.updateCounter) { _, _ in
+            viewModel.onLibraryChanged()
+        }
+        .confirmationDialog(
+            "Workout not finished",
+            isPresented: $showIncompleteSaveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Save anyway", role: .destructive) {
+                viewModel.finishAndSave(modelContext: modelContext)
+            }
+            Button("Keep editing", role: .cancel) {}
+        } message: {
+            Text(viewModel.incompleteSaveAlertMessage)
+        }
     }
 
-    private var compactHero: some View {
-        ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: heroURL) { phase in
-                switch phase {
-                case .empty:
-                    Rectangle().fill(BlueprintTheme.card)
-                case let .success(image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                case .failure:
-                    Rectangle().fill(BlueprintTheme.card)
-                @unknown default:
-                    EmptyView()
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 120)
-            .clipped()
-            .overlay {
-                LinearGradient(
-                    colors: [BlueprintTheme.bg.opacity(0.95), BlueprintTheme.bg.opacity(0.25)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Tap Log set when the numbers match what you lifted. Weights fill in from your last session or history.")
-                    .font(.subheadline)
-                    .foregroundStyle(BlueprintTheme.muted)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private var emptyProfileProgramsCallout: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("No programs in your profile")
+                .font(.headline)
+                .foregroundStyle(BlueprintTheme.cream)
+            Text("Open the Programs tab, pick a plan, and tap Add to profile. It will show up here for quick logging.")
+                .font(.subheadline)
+                .foregroundStyle(BlueprintTheme.mutedLight)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
-        .clipped()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(24)
     }
 
     private var dayHeaderAndQuickLog: some View {
@@ -138,6 +147,15 @@ struct WorkoutHubView: View {
                         .foregroundStyle(BlueprintTheme.muted)
                         .padding(.horizontal, 20)
 
+                    WeeklyStreakTeaser(
+                        snapshot: WorkoutWeeklyStreakEngine.snapshot(
+                            loggedWorkouts: loggedWorkouts,
+                            activeProgram: viewModel.activeProgram
+                        )
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("Training day")
                             .font(.subheadline.weight(.semibold))
@@ -160,6 +178,11 @@ struct WorkoutHubView: View {
 
                     if viewModel.dayIndex < p.days.count {
                         let day = p.days[viewModel.dayIndex]
+                        lastCompletedTrainingDayLine(program: p, day: day)
+                    }
+
+                    if viewModel.dayIndex < p.days.count {
+                        let day = p.days[viewModel.dayIndex]
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Today's session")
                                 .font(.caption.weight(.semibold))
@@ -168,7 +191,9 @@ struct WorkoutHubView: View {
                                 .padding(.top, 4)
 
                             ForEach(viewModel.exerciseRows) { row in
-                                QuickLogExerciseCard(row: row, viewModel: viewModel)
+                                QuickLogExerciseCard(row: row, viewModel: viewModel) {
+                                    exerciseHistoryItem = ExerciseHistorySheetItem(name: row.name)
+                                }
                             }
                             .padding(.horizontal, 12)
 
@@ -195,10 +220,38 @@ struct WorkoutHubView: View {
         "\(program.name) · \(program.period)"
     }
 
+    @ViewBuilder
+    private func lastCompletedTrainingDayLine(program: WorkoutProgram, day: WorkoutDay) -> some View {
+        let lastDate = loggedWorkouts.first { w in
+            w.programName == program.name && w.dayLabel == day.label
+        }?.date
+
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "calendar.badge.checkmark")
+                .font(.caption)
+                .foregroundStyle(BlueprintTheme.mint.opacity(0.95))
+            if let lastDate {
+                Text("Last completed \(lastDate.formatted(.dateTime.month(.abbreviated).day().year().hour().minute()))")
+                    .font(.caption)
+                    .foregroundStyle(BlueprintTheme.mutedLight)
+            } else {
+                Text("You haven’t completed this training day yet.")
+                    .font(.caption)
+                    .foregroundStyle(BlueprintTheme.muted)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 2)
+    }
+
     private var finishSessionBar: some View {
         VStack(spacing: 8) {
             Button {
-                viewModel.finishAndSave(modelContext: modelContext)
+                if viewModel.hasIncompletePlannedWork {
+                    showIncompleteSaveConfirm = true
+                } else {
+                    viewModel.finishAndSave(modelContext: modelContext)
+                }
             } label: {
                 Label("Save workout", systemImage: "checkmark.circle.fill")
                     .frame(maxWidth: .infinity)
@@ -226,6 +279,7 @@ struct WorkoutHubView: View {
 private struct QuickLogExerciseCard: View {
     let row: QuickExerciseState
     @ObservedObject var viewModel: WorkoutHubViewModel
+    var onHistory: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -246,7 +300,7 @@ private struct QuickLogExerciseCard: View {
                                 .font(.caption2)
                                 .foregroundStyle(BlueprintTheme.lavender.opacity(0.9))
                         }
-                        Text("Plan: \(row.templateMaxLabel)")
+                        Text("Plan: \(row.planDisplay)")
                             .font(.caption2)
                             .foregroundStyle(BlueprintTheme.muted)
                     }
@@ -255,6 +309,15 @@ private struct QuickLogExerciseCard: View {
                         .foregroundStyle(row.isSetsComplete ? BlueprintTheme.mint : BlueprintTheme.muted)
                 }
                 Spacer(minLength: 0)
+                Button(action: onHistory) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(BlueprintTheme.lavender)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("History for \(row.name)")
             }
 
             HStack(spacing: 8) {

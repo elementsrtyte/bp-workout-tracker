@@ -11,7 +11,8 @@ struct QuickExerciseState: Identifiable, Equatable {
     var id: String { "\(sortOrder)-\(name)" }
     let sortOrder: Int
     let name: String
-    let templateMaxLabel: String
+    /// Peak-based plan line (may include progressive bump).
+    let planDisplay: String
     /// Working sets prescribed by the program for this exercise.
     let targetSets: Int
     var workingWeight: Double
@@ -64,8 +65,16 @@ final class WorkoutHubViewModel: ObservableObject {
         self.bundle = bundle
     }
 
-    var programs: [WorkoutProgram] {
+    /// Full catalog from the app bundle (marketplace / progress data).
+    var allPrograms: [WorkoutProgram] {
         bundle.workoutPrograms?.programs ?? []
+    }
+
+    /// Programs the user added to their profile (Workout tab).
+    var programs: [WorkoutProgram] {
+        let all = allPrograms
+        let allowed = UserProgramLibrary.shared.idsInLibrary(catalogIds: all.map(\.id))
+        return all.filter { allowed.contains($0.id) }
     }
 
     var stats: ProgramStats? {
@@ -85,21 +94,42 @@ final class WorkoutHubViewModel: ObservableObject {
         exerciseRows.contains { !$0.loggedSets.isEmpty }
     }
 
+    /// Exercises on this day that are below their prescribed set count (including not started).
+    var incompleteExerciseRows: [QuickExerciseState] {
+        exerciseRows.filter { $0.loggedSets.count < $0.targetSets }
+    }
+
+    var hasIncompletePlannedWork: Bool {
+        !incompleteExerciseRows.isEmpty
+    }
+
+    /// User-facing detail for the incomplete-save warning (keep reasonably short).
+    var incompleteSaveAlertMessage: String {
+        let rows = incompleteExerciseRows
+        let lines = rows.prefix(6).map { row -> String in
+            if row.loggedSets.isEmpty {
+                return "• \(row.name): no sets logged (plan \(row.targetSets))"
+            }
+            return "• \(row.name): \(row.loggedSets.count)/\(row.targetSets) sets"
+        }
+        let suffix: String
+        if rows.count > 6 {
+            suffix = "\n… and \(rows.count - 6) more"
+        } else {
+            suffix = ""
+        }
+        return "This day’s plan isn’t fully logged yet.\n\n\(lines.joined(separator: "\n"))\(suffix)\n\nExercises with no sets won’t appear in the saved workout. Save anyway?"
+    }
+
     func onAppear() {
         bundle.loadIfNeeded()
-        let d = UserDefaults.standard
-        if let saved = d.string(forKey: DefaultsKey.programId), !saved.isEmpty,
-           programs.contains(where: { $0.id == saved }) {
-            activeProgramId = saved
-        } else if activeProgramId.isEmpty, let first = programs.first {
-            activeProgramId = first.id
-            d.set(first.id, forKey: DefaultsKey.programId)
-        }
-        if let p = activeProgram {
-            let saved = restoredDayIndex(forProgramId: activeProgramId)
-            dayIndex = clampDayIndex(saved, days: p.days.count)
-            d.set(dayIndex, forKey: DefaultsKey.dayIndexKey(programId: activeProgramId))
-        }
+        reconcileActiveProgramSelection()
+        rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
+    }
+
+    /// Call when profile library membership changes (e.g. Programs tab).
+    func onLibraryChanged() {
+        reconcileActiveProgramSelection()
         rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
     }
 
@@ -203,6 +233,27 @@ final class WorkoutHubViewModel: ObservableObject {
 
     // MARK: - Private
 
+    private func reconcileActiveProgramSelection() {
+        let d = UserDefaults.standard
+        guard !programs.isEmpty else {
+            activeProgramId = ""
+            dayIndex = 0
+            return
+        }
+        if let saved = d.string(forKey: DefaultsKey.programId), !saved.isEmpty,
+           programs.contains(where: { $0.id == saved }) {
+            activeProgramId = saved
+        } else {
+            activeProgramId = programs[0].id
+            d.set(activeProgramId, forKey: DefaultsKey.programId)
+        }
+        if let p = activeProgram {
+            let saved = restoredDayIndex(forProgramId: activeProgramId)
+            dayIndex = clampDayIndex(saved, days: p.days.count)
+            d.set(dayIndex, forKey: DefaultsKey.dayIndexKey(programId: activeProgramId))
+        }
+    }
+
     private func rebuildExerciseRows(usingLogged logged: [LoggedWorkout]) {
         guard let day = activeDay, let program = activeProgram else {
             exerciseRows = []
@@ -221,7 +272,7 @@ final class WorkoutHubViewModel: ObservableObject {
             var state = QuickExerciseState(
                 sortOrder: idx,
                 name: ex.name,
-                templateMaxLabel: ex.maxWeight,
+                planDisplay: sug.planDisplay,
                 targetSets: prescribed,
                 workingWeight: sug.weight,
                 workingReps: sug.reps,

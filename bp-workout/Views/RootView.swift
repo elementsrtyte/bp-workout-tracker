@@ -8,11 +8,14 @@ struct RootView: View {
             }
             .tabItem { Label("Workout", systemImage: "figure.strengthtraining.traditional") }
 
-            LogWorkoutListView()
-                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
-
             ProgressTrackerView()
                 .tabItem { Label("Progress", systemImage: "chart.xyaxis.line") }
+
+            GymCalendarView()
+                .tabItem { Label("Calendar", systemImage: "calendar") }
+
+            ProgramMarketplaceView()
+                .tabItem { Label("Programs", systemImage: "storefront") }
 
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }

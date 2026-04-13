@@ -6,7 +6,12 @@ enum WorkoutPrefill {
         var reps: Int
         /// Short label for PR / target context (e.g. "Peak 160 lb × 8").
         var prHint: String?
+        /// Shown as "Plan:" on the workout card — peak load, or a 5–10% bump if no weight PR in ~3 weeks.
+        var planDisplay: String
     }
+
+    /// Days without a new weight PR before we suggest a heavier target.
+    private static let prStaleCalendarDays = 21
 
     /// Best-effort parse of program template strings like "155 lbs", "Bodyweight", "60s hold".
     static func parseTemplate(_ raw: String) -> (weight: Double, reps: Int) {
@@ -68,14 +73,34 @@ enum WorkoutPrefill {
             return "Peak \(formatWeight(p.peakWeight)) lb"
         }()
 
+        let planDisplay = planDisplayLine(
+            exerciseName: exerciseName,
+            templateMax: templateMax,
+            progress: progress
+        )
+
         if let last = lastSessionSet(for: key, workouts: loggedWorkouts) {
-            return Suggestion(weight: last.weight, reps: last.reps, prHint: prHint)
+            return Suggestion(weight: last.weight, reps: last.reps, prHint: prHint, planDisplay: planDisplay)
         }
         if let p = progress, let last = p.entries.last {
-            return Suggestion(weight: last.weight, reps: last.reps, prHint: prHint)
+            let w: Double
+            if p.peakWeight > 0, isWeightPRStale(p) {
+                w = bumpedTargetWeight(peak: p.peakWeight, exerciseName: exerciseName)
+            } else {
+                w = last.weight
+            }
+            return Suggestion(weight: w, reps: last.reps, prHint: prHint, planDisplay: planDisplay)
         }
         let tpl = parseTemplate(templateMax)
-        return Suggestion(weight: tpl.weight, reps: tpl.reps, prHint: prHint)
+        var w = tpl.weight
+        var r = tpl.reps
+        if let p = progress, p.peakWeight > 0, isWeightPRStale(p) {
+            w = bumpedTargetWeight(peak: p.peakWeight, exerciseName: exerciseName)
+            if let peakR = repsAtPeakWeight(p), peakR > 0 {
+                r = peakR
+            }
+        }
+        return Suggestion(weight: w, reps: r, prHint: prHint, planDisplay: planDisplay)
     }
 
     static func formatWeight(_ w: Double) -> String {
@@ -109,5 +134,99 @@ enum WorkoutPrefill {
         let atPeak = p.entries.filter { abs($0.weight - peak) < 0.01 }
         guard !atPeak.isEmpty else { return nil }
         return atPeak.map(\.reps).max()
+    }
+
+    // MARK: - Plan line (peak + progressive overload)
+
+    private static let progressDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone.current
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    /// Stable 5%…10% bump per exercise name so the target doesn’t flicker between sessions.
+    private static func progressiveBumpFraction(for exerciseName: String) -> Double {
+        var hasher = Hasher()
+        hasher.combine(exerciseName)
+        let h = hasher.finalize()
+        let u = Double(h % 10_000) / 10_000.0
+        return 0.05 + 0.05 * u
+    }
+
+    private static func isWeightPRStale(_ progress: ExerciseProgress) -> Bool {
+        guard progress.peakWeight > 0 else { return false }
+        let chronological = progress.entries.sorted { $0.date < $1.date }
+        guard let lastPRDay = lastWeightPRDate(from: chronological) else { return true }
+        return calendarDaysSince(lastPRDay) >= prStaleCalendarDays
+    }
+
+    /// Heavier target after `peak * (5–10%)`, rounded to 2.5 lb, always above `peak`.
+    private static func bumpedTargetWeight(peak: Double, exerciseName: String) -> Double {
+        let frac = progressiveBumpFraction(for: exerciseName)
+        var target = peak * (1 + frac)
+        target = roundToPlateIncrement(target)
+        if target <= peak {
+            target = roundToPlateIncrement(peak * 1.05)
+        }
+        if target <= peak {
+            target = peak + 2.5
+        }
+        return target
+    }
+
+    private static func parseProgressDay(_ dateString: String) -> Date? {
+        progressDayFormatter.date(from: dateString)
+    }
+
+    private static func calendarDaysSince(_ start: Date, end: Date = .now) -> Int {
+        let cal = Calendar.current
+        let s = cal.startOfDay(for: start)
+        let e = cal.startOfDay(for: end)
+        return cal.dateComponents([.day], from: s, to: e).day ?? 0
+    }
+
+    /// Most recent date the running max **weight** increased (true PR progression in load).
+    private static func lastWeightPRDate(from entriesChronological: [ProgressEntry]) -> Date? {
+        var running = -Double.infinity
+        var lastBump: Date?
+        for e in entriesChronological {
+            if e.weight > running + 0.01 {
+                running = e.weight
+                if let d = parseProgressDay(e.date) {
+                    lastBump = d
+                }
+            }
+        }
+        return lastBump
+    }
+
+    private static func roundToPlateIncrement(_ w: Double) -> Double {
+        guard w > 0 else { return 0 }
+        let step = 2.5
+        let r = (w / step).rounded() * step
+        return max(step, r)
+    }
+
+    private static func planDisplayLine(
+        exerciseName: String,
+        templateMax: String,
+        progress: ExerciseProgress?
+    ) -> String {
+        guard let p = progress, !p.entries.isEmpty, p.peakWeight > 0 else {
+            let tpl = parseTemplate(templateMax)
+            if tpl.weight > 0 {
+                return "\(formatWeight(tpl.weight)) lb (program)"
+            }
+            return "BW · add reps, time, or load"
+        }
+
+        if !isWeightPRStale(p) {
+            return "\(formatWeight(p.peakWeight)) lb"
+        }
+        let target = bumpedTargetWeight(peak: p.peakWeight, exerciseName: exerciseName)
+        return "\(formatWeight(target)) lb · go for a new PR"
     }
 }

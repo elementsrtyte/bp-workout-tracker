@@ -9,6 +9,7 @@ struct bp_workoutApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(appSettings)
+                .environmentObject(UserProgramLibrary.shared)
         }
         .modelContainer(for: [LoggedWorkout.self, LoggedExercise.self, LoggedSet.self])
     }
