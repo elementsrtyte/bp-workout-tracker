@@ -4,3 +4,5 @@ reference/neil-workout-tracker/
 api/node_modules/
 api/dist/
 api/.env
+api/.env.local
+api/.env.*.local

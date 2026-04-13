@@ -56,7 +56,8 @@ final class SupabaseSessionManager: ObservableObject {
             let s = try await postTokenExchange(
                 authBase: authBase,
                 anonKey: anon,
-                body: ["grant_type": "refresh_token", "refresh_token": refresh]
+                grantType: "refresh_token",
+                body: ["refresh_token": refresh]
             )
             applySession(s)
             phase = .signedIn
@@ -194,7 +195,8 @@ final class SupabaseSessionManager: ObservableObject {
         let s = try await postTokenExchange(
             authBase: authBase,
             anonKey: anon,
-            body: ["grant_type": "refresh_token", "refresh_token": refresh]
+            grantType: "refresh_token",
+            body: ["refresh_token": refresh]
         )
         applySession(s)
     }
@@ -272,7 +274,8 @@ final class SupabaseSessionManager: ObservableObject {
         try await postTokenExchange(
             authBase: authBase,
             anonKey: anonKey,
-            body: ["grant_type": "password", "email": email, "password": password]
+            grantType: "password",
+            body: ["email": email, "password": password]
         )
     }
 
@@ -302,8 +305,18 @@ final class SupabaseSessionManager: ObservableObject {
         try throwIfBadHTTP(res, data: data)
     }
 
-    private func postTokenExchange(authBase: URL, anonKey: String, body: [String: Any]) async throws -> AuthSessionDTO {
-        let url = authBase.appendingPathComponent("token")
+    private func postTokenExchange(
+        authBase: URL,
+        anonKey: String,
+        grantType: String,
+        body: [String: Any]
+    ) async throws -> AuthSessionDTO {
+        var components = URLComponents(
+            url: authBase.appendingPathComponent("token"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [URLQueryItem(name: "grant_type", value: grantType)]
+        guard let url = components?.url else { throw SupabaseAuthError.badURL }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -387,6 +400,7 @@ enum SupabaseAuthError: LocalizedError {
 private func parseGoTrueErrorMessage(_ data: Data) -> String? {
     guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
     if let d = obj["error_description"] as? String, !d.isEmpty { return d }
+    if let d = obj["msg"] as? String, !d.isEmpty { return d }
     if let d = obj["message"] as? String, !d.isEmpty { return d }
     if let e = obj["error"] as? String, !e.isEmpty {
         if e == "invalid_grant" { return "Invalid email or password." }

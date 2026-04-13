@@ -93,6 +93,7 @@ struct ProgramMarketplaceView: View {
             NavigationStack {
                 ProgramEditorView(route: route)
                     .environmentObject(programLibrary)
+                    .environmentObject(appSettings)
             }
             .tint(BlueprintTheme.purple)
         }
@@ -198,8 +199,8 @@ struct ProgramMarketplaceView: View {
         let inProfile = programLibrary.isInLibrary(programId: program.id, catalog: catalog)
         let bundled = bundle.isBundledProgram(id: program.id)
         let userOwned = bundle.isPersistedCustomProgram(id: program.id)
-        let canEditBundled = appSettings.programAdminMode && bundled
-        let showEdit = userOwned || canEditBundled
+        /// Anyone can edit marketplace (bundled) programs; saves stay on-device unless Program admin is on.
+        let showEdit = userOwned || bundled
         let showDelete = userOwned
 
         return VStack(alignment: .leading, spacing: 12) {

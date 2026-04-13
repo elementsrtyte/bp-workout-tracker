@@ -5,6 +5,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import multer, { type MulterError } from "multer";
 import OpenAI from "openai";
 import { HttpError } from "./httpError.js";
+import { postPublishCatalogProgram } from "./catalogPublish.js";
 import { fetchSupabaseAuthUser } from "./supabaseData.js";
 import { fetchWorkoutProgramsBundle } from "./workoutCatalog.js";
 import { postWorkoutSync } from "./workoutSync.js";
@@ -310,6 +311,11 @@ ${allowedJSON}`;
 });
 
 app.use("/v1/ai", aiRouter);
+
+const adminRouter = express.Router();
+adminRouter.use(requireAuth);
+adminRouter.post("/publish-catalog-program", postPublishCatalogProgram);
+app.use("/v1/admin", adminRouter);
 
 function isMulterError(e: unknown): e is MulterError {
   return typeof e === "object" && e !== null && "code" in e;

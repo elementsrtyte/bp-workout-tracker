@@ -53,10 +53,12 @@ struct SettingsView: View {
                 }
 
                 Section("Programs") {
-                    Toggle("Program admin (edit bundled plans)", isOn: $appSettings.programAdminMode)
-                    Text("When enabled, the Programs tab lets you edit Blueprint bundle plans. Changes are saved on this device only.")
-                        .font(.caption)
-                        .foregroundStyle(BlueprintTheme.mutedLight)
+                    Toggle("Program admin (publish catalog edits)", isOn: $appSettings.programAdminMode)
+                    Text(
+                        "Anyone can edit marketplace programs; those changes stay on this device. Turn this on only for development: saving a bundled program then updates the shared catalog for all users (API must allow your account)."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(BlueprintTheme.mutedLight)
                 }
 
                 Section("AI features") {

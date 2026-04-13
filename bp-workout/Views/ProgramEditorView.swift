@@ -30,6 +30,9 @@ final class ProgramEditorViewModel: ObservableObject {
     let stableId: String
     /// Preserved from the loaded program (or default for new); not user-editable in the UI.
     private let accentHexForSave: String
+    /// Shown only for bundled programs; kept when saving so catalog metadata is not wiped.
+    private let catalogPeriod: String
+    private let catalogDateRange: String
 
     @Published var name: String
     @Published var subtitle: String
@@ -59,6 +62,8 @@ final class ProgramEditorViewModel: ObservableObject {
             mode = .create
             stableId = "user-\(UUID().uuidString)"
             accentHexForSave = WorkoutProgram.defaultAccentHex
+            catalogPeriod = ""
+            catalogDateRange = ""
             name = ""
             subtitle = ""
             days = [
@@ -74,6 +79,8 @@ final class ProgramEditorViewModel: ObservableObject {
             mode = .create
             stableId = p.id
             accentHexForSave = Self.normalizedAccentHex(p.color)
+            catalogPeriod = ""
+            catalogDateRange = ""
             name = p.name
             subtitle = p.subtitle
             days = Self.daysFromProgram(p)
@@ -81,6 +88,8 @@ final class ProgramEditorViewModel: ObservableObject {
             mode = .editCustom
             stableId = p.id
             accentHexForSave = Self.normalizedAccentHex(p.color)
+            catalogPeriod = ""
+            catalogDateRange = ""
             name = p.name
             subtitle = p.subtitle
             days = Self.daysFromProgram(p)
@@ -88,6 +97,8 @@ final class ProgramEditorViewModel: ObservableObject {
             mode = .editBundled
             stableId = p.id
             accentHexForSave = Self.normalizedAccentHex(p.color)
+            catalogPeriod = p.period
+            catalogDateRange = p.dateRange
             name = p.name
             subtitle = p.subtitle
             days = Self.daysFromProgram(p)
@@ -169,12 +180,14 @@ final class ProgramEditorViewModel: ObservableObject {
         }.filter { !$0.exercises.isEmpty }
 
         let isUser: Bool? = mode == .editBundled ? nil : true
+        let period = mode == .editBundled ? catalogPeriod : ""
+        let dateRange = mode == .editBundled ? catalogDateRange : ""
         return WorkoutProgram(
             id: stableId,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             subtitle: subtitle.trimmingCharacters(in: .whitespacesAndNewlines),
-            period: "",
-            dateRange: "",
+            period: period,
+            dateRange: dateRange,
             days: workoutDays,
             color: accentHexForSave,
             isUserCreated: isUser
@@ -394,11 +407,14 @@ struct ProgramEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var programLibrary: UserProgramLibrary
+    @EnvironmentObject private var appSettings: AppSettings
     @ObservedObject private var auth: SupabaseSessionManager = .shared
     @ObservedObject private var bundle = BundleDataStore.shared
     @StateObject private var vm: ProgramEditorViewModel
 
     @State private var showRevertConfirm = false
+    @State private var isPublishingCatalog = false
+    @State private var publishCatalogError: String?
     @State private var selectedDayIndex: Int = 0
     @FocusState private var focusedExerciseNameField: ProgramExerciseNameFieldID?
     @State private var aiRelatedByField: [ProgramExerciseNameFieldID: [String]] = [:]
@@ -452,8 +468,8 @@ struct ProgramEditorView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
-                    .disabled(!vm.canSave)
-                    .foregroundStyle(vm.canSave ? BlueprintTheme.cream : BlueprintTheme.muted)
+                    .disabled(!vm.canSave || isPublishingCatalog)
+                    .foregroundStyle(vm.canSave && !isPublishingCatalog ? BlueprintTheme.cream : BlueprintTheme.muted)
             }
         }
         .onChange(of: vm.days.count) { _, _ in
@@ -479,6 +495,14 @@ struct ProgramEditorView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Your local edits will be removed.")
+        }
+        .alert("Could not publish catalog", isPresented: Binding(
+            get: { publishCatalogError != nil },
+            set: { if !$0 { publishCatalogError = nil } }
+        )) {
+            Button("OK", role: .cancel) { publishCatalogError = nil }
+        } message: {
+            Text(publishCatalogError ?? "")
         }
         .tint(BlueprintTheme.purple)
     }
@@ -783,7 +807,7 @@ struct ProgramEditorView: View {
         case .create: return "New program"
         case .createFromImport: return "Imported program"
         case .editCustom: return "Edit program"
-        case .editBundled: return "Edit program (admin)"
+        case .editBundled: return "Edit program"
         }
     }
 
@@ -1075,15 +1099,36 @@ struct ProgramEditorView: View {
         switch vm.mode {
         case .create, .editCustom:
             bundle.upsertCustomProgram(program)
+            switch route {
+            case .create, .createFromImport:
+                programLibrary.setProgramInLibrary(program.id, enabled: true, catalog: bundle.mergedPrograms)
+            default:
+                break
+            }
+            dismiss()
         case .editBundled:
-            bundle.setBundledOverride(program)
+            if appSettings.programAdminMode {
+                Task { @MainActor in
+                    isPublishingCatalog = true
+                    defer { isPublishingCatalog = false }
+                    do {
+                        let token = try await auth.accessTokenForAPI()
+                        _ = try await BlueprintAPIClient.post(
+                            path: "/v1/admin/publish-catalog-program",
+                            body: program,
+                            accessToken: token
+                        )
+                        bundle.removeBundledOverride(programId: program.id)
+                        await bundle.refreshCatalogFromServer()
+                        dismiss()
+                    } catch {
+                        publishCatalogError = error.localizedDescription
+                    }
+                }
+            } else {
+                bundle.setBundledOverride(program)
+                dismiss()
+            }
         }
-        switch route {
-        case .create, .createFromImport:
-            programLibrary.setProgramInLibrary(program.id, enabled: true, catalog: bundle.mergedPrograms)
-        default:
-            break
-        }
-        dismiss()
     }
 }
