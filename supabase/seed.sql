@@ -1,0 +1,3 @@
+-- Optional reference data for local dev. App ships catalog JSON in the bundle.
+-- Example:
+-- insert into storage.buckets (id, name, public) values ('catalog', 'catalog', true);

@@ -17,12 +17,11 @@ struct ProgressTrackerView: View {
                     Text("Chart")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(BlueprintTheme.muted)
-                    Picker("Chart mode", selection: $viewModel.chartMode) {
-                        Text("Weight").tag(ProgressChartMode.weight)
-                        Text("Volume").tag(ProgressChartMode.volume)
-                        Text("Reps").tag(ProgressChartMode.reprange)
-                    }
-                    .pickerStyle(.menu)
+                    BlueprintChipPicker(
+                        title: "",
+                        selection: $viewModel.chartMode,
+                        options: ProgressChartMode.allCases.map { ($0, $0.pickerLabel) }
+                    )
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
@@ -57,24 +56,21 @@ struct ProgressTrackerView: View {
             .searchable(text: $viewModel.search, isPresented: $searchPresented, prompt: "Search exercises")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Menu("Sort") {
-                        Picker("Sort", selection: $viewModel.sortBy) {
-                            Text("Most sessions").tag(ProgressSortOption.sessions)
-                            Text("Biggest gain").tag(ProgressSortOption.gain)
-                            Text("Heaviest peak").tag(ProgressSortOption.peak)
-                            Text("A–Z").tag(ProgressSortOption.alpha)
-                        }
-                    }
+                    BlueprintToolbarMenuPicker(
+                        accessibilityLabel: "Sort exercises",
+                        systemImage: "arrow.up.arrow.down",
+                        selection: $viewModel.sortBy,
+                        options: ProgressSortOption.allCases.map { ($0, $0.pickerLabel) }
+                    )
                 }
                 ToolbarItem(placement: .secondaryAction) {
-                    Menu("Program") {
-                        Picker("Program", selection: $viewModel.programFilter) {
-                            Text("All programs").tag("all")
-                            ForEach(ProgressTrackerViewModel.programFilterOptions, id: \.self) { p in
-                                Text(p).tag(p)
-                            }
-                        }
-                    }
+                    BlueprintToolbarMenuPicker(
+                        accessibilityLabel: "Filter by program",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        selection: $viewModel.programFilter,
+                        options: [("all", "All programs")]
+                            + ProgressTrackerViewModel.programFilterOptions.map { ($0, $0) }
+                    )
                 }
             }
         }
@@ -122,6 +118,8 @@ private struct ExerciseProgressCard: View {
     let chartMode: ProgressChartMode
     let programColors: [String: String]
 
+    @State private var scrubbedEntry: ProgressEntry?
+
     private var ex: ExerciseProgress { row.exercise }
     private var cleanEntries: [ProgressEntry] { row.cleanEntries }
 
@@ -139,6 +137,7 @@ private struct ExerciseProgressCard: View {
                 .stroke(BlueprintTheme.border, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onChange(of: chartMode) { _, _ in scrubbedEntry = nil }
     }
 
     private var header: some View {
@@ -170,15 +169,52 @@ private struct ExerciseProgressCard: View {
                     ? ProgressMetrics.volumePctChange(entries: cleanEntries)
                     : ProgressMetrics.pctChange(entries: cleanEntries)
                 let trend = ProgressMetrics.trend(entries: cleanEntries)
-                HStack(spacing: 4) {
-                    Image(systemName: trend == .up ? "arrow.up.right" : trend == .down ? "arrow.down.right" : "arrow.right")
-                    Text("\(pct > 0 ? "+" : "")\(pct)%")
-                        .font(.caption.monospacedDigit().weight(.semibold))
+                VStack(alignment: .trailing, spacing: 3) {
+                    HStack(spacing: 4) {
+                        Image(systemName: trend == .up ? "arrow.up.right" : trend == .down ? "arrow.down.right" : "arrow.right")
+                        Text("\(pct > 0 ? "+" : "")\(pct)%")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                    }
+                    .foregroundStyle(trend == .up ? BlueprintTheme.mint : trend == .down ? BlueprintTheme.danger : BlueprintTheme.muted)
+                    if let entry = scrubbedEntry {
+                        headerScrubReadout(entry: entry)
+                    }
                 }
-                .foregroundStyle(trend == .up ? BlueprintTheme.mint : trend == .down ? BlueprintTheme.danger : BlueprintTheme.muted)
-                .fixedSize(horizontal: true, vertical: false)
+                .fixedSize(horizontal: true, vertical: true)
             }
         }
+    }
+
+    @ViewBuilder
+    private func headerScrubReadout(entry: ProgressEntry) -> some View {
+        switch chartMode {
+        case .weight:
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(compactScrubDate(entry.date))
+                    .font(.system(size: 10))
+                    .foregroundStyle(BlueprintTheme.mutedLight)
+                Text("\(formatWeight(entry.weight)) lb")
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(BlueprintTheme.cream)
+            }
+        case .volume:
+            let v = entry.weight * Double(entry.reps)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(compactScrubDate(entry.date))
+                    .font(.system(size: 10))
+                    .foregroundStyle(BlueprintTheme.mutedLight)
+                Text("\(formatWeight(entry.weight))×\(entry.reps) · \(formatVol(v))")
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(BlueprintTheme.cream)
+            }
+        case .reprange:
+            EmptyView()
+        }
+    }
+
+    private func compactScrubDate(_ yyyyMMdd: String) -> String {
+        guard let d = ProgressMetrics.parseChartDate(yyyyMMdd) else { return yyyyMMdd }
+        return d.formatted(.dateTime.month(.abbreviated).day())
     }
 
     @ViewBuilder
@@ -195,7 +231,8 @@ private struct ExerciseProgressCard: View {
             InteractiveProgressLineChart(
                 entries: cleanEntries,
                 chartMode: chartMode,
-                lineColor: { lineColor(for: $0) }
+                lineColor: { lineColor(for: $0) },
+                scrubbedEntry: $scrubbedEntry
             )
         }
     }
@@ -261,6 +298,7 @@ private struct InteractiveProgressLineChart: View {
     let entries: [ProgressEntry]
     let chartMode: ProgressChartMode
     let lineColor: (String) -> Color
+    @Binding var scrubbedEntry: ProgressEntry?
 
     @State private var selectedX: Date?
 
@@ -278,156 +316,71 @@ private struct InteractiveProgressLineChart: View {
         return pairs.min(by: { abs($0.date.timeIntervalSince(x)) < abs($1.date.timeIntervalSince(x)) })?.entry
     }
 
-    private var selectedEntry: ProgressEntry? {
-        guard let x = selectedX else { return nil }
-        return nearestEntry(to: x)
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Chart {
-                ForEach(Array(datedEntries.enumerated()), id: \.offset) { _, pair in
-                    let d = pair.date
-                    let e = pair.entry
-                    if chartMode == .weight {
-                        LineMark(
-                            x: .value("Date", d),
-                            y: .value("Weight", e.weight)
-                        )
-                        .foregroundStyle(lineColor(e.program))
-                    } else {
-                        LineMark(
-                            x: .value("Date", d),
-                            y: .value("Volume", e.weight * Double(e.reps))
-                        )
-                        .foregroundStyle(BlueprintTheme.amber)
-                    }
-                }
-
-                if let x = selectedX, let entry = nearestEntry(to: x), let d = ProgressMetrics.parseChartDate(entry.date) {
-                    RuleMark(x: .value("Selected", x))
-                        .foregroundStyle(BlueprintTheme.lavender.opacity(0.88))
-                        .lineStyle(StrokeStyle(lineWidth: 1))
-
-                    if chartMode == .weight {
-                        PointMark(
-                            x: .value("Date", d),
-                            y: .value("Weight", entry.weight)
-                        )
-                        .symbolSize(72)
-                        .foregroundStyle(BlueprintTheme.cream)
-                    } else {
-                        let vol = entry.weight * Double(entry.reps)
-                        PointMark(
-                            x: .value("Date", d),
-                            y: .value("Volume", vol)
-                        )
-                        .symbolSize(72)
-                        .foregroundStyle(BlueprintTheme.cream)
-                    }
+        Chart {
+            ForEach(Array(datedEntries.enumerated()), id: \.offset) { _, pair in
+                let d = pair.date
+                let e = pair.entry
+                if chartMode == .weight {
+                    LineMark(
+                        x: .value("Date", d),
+                        y: .value("Weight", e.weight)
+                    )
+                    .foregroundStyle(lineColor(e.program))
+                } else {
+                    LineMark(
+                        x: .value("Date", d),
+                        y: .value("Volume", e.weight * Double(e.reps))
+                    )
+                    .foregroundStyle(BlueprintTheme.amber)
                 }
             }
-            .chartXSelection(value: $selectedX)
-            .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) {
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(BlueprintTheme.border.opacity(0.6))
-                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                        .foregroundStyle(BlueprintTheme.mutedLight)
-                }
-            }
-            .chartYAxis {
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) {
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(BlueprintTheme.border.opacity(0.6))
-                    AxisValueLabel()
-                        .foregroundStyle(BlueprintTheme.mutedLight)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 148)
 
-            scrubReadoutStrip
+            if let x = selectedX, let entry = nearestEntry(to: x), let d = ProgressMetrics.parseChartDate(entry.date) {
+                RuleMark(x: .value("Selected", x))
+                    .foregroundStyle(BlueprintTheme.lavender.opacity(0.88))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+
+                if chartMode == .weight {
+                    PointMark(
+                        x: .value("Date", d),
+                        y: .value("Weight", entry.weight)
+                    )
+                    .symbolSize(72)
+                    .foregroundStyle(BlueprintTheme.cream)
+                } else {
+                    let vol = entry.weight * Double(entry.reps)
+                    PointMark(
+                        x: .value("Date", d),
+                        y: .value("Volume", vol)
+                    )
+                    .symbolSize(72)
+                    .foregroundStyle(BlueprintTheme.cream)
+                }
+            }
+        }
+        .chartXSelection(value: $selectedX)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) {
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(BlueprintTheme.border.opacity(0.6))
+                AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    .foregroundStyle(BlueprintTheme.mutedLight)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) {
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(BlueprintTheme.border.opacity(0.6))
+                AxisValueLabel()
+                    .foregroundStyle(BlueprintTheme.mutedLight)
+            }
         }
         .frame(maxWidth: .infinity)
-    }
-
-    /// Fixed-height strip under the plot so scrub values never cover the chart and layout doesn’t jump.
-    private var scrubReadoutStrip: some View {
-        Group {
-            if let entry = selectedEntry {
-                scrubReadoutContent(for: entry)
-                    .frame(height: 52, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(BlueprintTheme.cardInner)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(BlueprintTheme.border, lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                Color.clear
-                    .frame(height: 52)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-            }
+        .frame(height: 148)
+        .onChange(of: selectedX) { _, newX in
+            scrubbedEntry = newX.flatMap { nearestEntry(to: $0) }
         }
-    }
-
-    private func scrubReadoutContent(for entry: ProgressEntry) -> some View {
-        let primary: String
-        let secondary: String?
-        if chartMode == .weight {
-            primary = "\(tooltipDateString(entry.date)) · \(formatWeight(entry.weight)) lb"
-            secondary = nil
-        } else {
-            let v = entry.weight * Double(entry.reps)
-            primary = tooltipDateString(entry.date)
-            secondary = "\(formatWeight(entry.weight)) lb × \(entry.reps) · vol \(formatVol(v))"
-        }
-
-        return HStack(alignment: .center, spacing: 8) {
-            Image(systemName: "scope")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(BlueprintTheme.lavender)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(primary)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(BlueprintTheme.cream)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                if let secondary {
-                    Text(secondary)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(BlueprintTheme.mutedLight)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func tooltipDateString(_ yyyyMMdd: String) -> String {
-        guard let d = ProgressMetrics.parseChartDate(yyyyMMdd) else { return yyyyMMdd }
-        return Self.tooltipDF.string(from: d)
-    }
-
-    private static let tooltipDF: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
-
-    private func formatWeight(_ w: Double) -> String {
-        w.formatted(.number.precision(.fractionLength(0...1)))
-    }
-
-    private func formatVol(_ v: Double) -> String {
-        Int(v).formatted()
     }
 }
 

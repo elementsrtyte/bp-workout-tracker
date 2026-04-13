@@ -134,16 +134,14 @@ struct WorkoutHubView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 12)
 
-                    Picker("Active program", selection: Binding(
-                        get: { viewModel.activeProgramId },
-                        set: { viewModel.selectProgram(id: $0) }
-                    )) {
-                        ForEach(viewModel.programs) { program in
-                            Text(programMenuLabel(program)).tag(program.id)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .tint(BlueprintTheme.cream)
+                    BlueprintMenuPicker(
+                        title: "",
+                        selection: Binding(
+                            get: { viewModel.activeProgramId },
+                            set: { viewModel.selectProgram(id: $0) }
+                        ),
+                        options: viewModel.programs.map { ($0.id, programMenuLabel($0)) }
+                    )
                     .padding(.horizontal, 20)
 
                     if !p.subtitle.isEmpty {
@@ -170,16 +168,17 @@ struct WorkoutHubView: View {
                     }
                     .padding(.horizontal, 20)
 
-                    Picker("Training day", selection: Binding(
-                        get: { viewModel.dayIndex },
-                        set: { viewModel.setDayIndex($0) }
-                    )) {
-                        ForEach(Array(p.days.enumerated()), id: \.offset) { i, day in
-                            Text(day.label).tag(i)
+                    BlueprintChipPicker(
+                        title: "",
+                        selection: Binding(
+                            get: { viewModel.dayIndex },
+                            set: { viewModel.setDayIndex($0) }
+                        ),
+                        options: Array(p.days.enumerated()).map { i, day in
+                            let label = day.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                            return (i, label.isEmpty ? "Day \(i + 1)" : label)
                         }
-                    }
-                    .pickerStyle(.menu)
-                    .tint(BlueprintTheme.cream)
+                    )
                     .padding(.horizontal, 20)
 
                     if viewModel.dayIndex < p.days.count {

@@ -14,7 +14,7 @@ struct LogWorkoutEditorView: View {
     var body: some View {
         Form {
             Section("Session") {
-                DatePicker("Date", selection: $viewModel.date, displayedComponents: .date)
+                BlueprintCompactDatePicker(title: "Date", date: $viewModel.date)
                 TextField("Program (optional)", text: $viewModel.programName)
                 TextField("Day / focus (optional)", text: $viewModel.dayLabel)
             }
@@ -80,6 +80,8 @@ struct LogWorkoutEditorView: View {
                 TextField("Notes", text: $viewModel.notes, axis: .vertical)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(BlueprintTheme.bg)
         .navigationTitle("New workout")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

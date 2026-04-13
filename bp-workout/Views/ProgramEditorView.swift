@@ -141,7 +141,7 @@ final class ProgramEditorViewModel: ObservableObject {
                 let n = ex.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !n.isEmpty else { return nil }
                 let ts = max(1, min(20, ex.targetSets))
-                let sg = ex.supersetGroup.flatMap { (1 ... 9).contains($0) ? $0 : nil }
+                let sg = ex.supersetGroup.flatMap { (1 ... 6).contains($0) ? $0 : nil }
                 return Exercise(
                     name: n,
                     maxWeight: ex.maxWeight.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -220,6 +220,86 @@ private struct ProgramExerciseNameFieldID: Hashable {
     let exIndex: Int
 }
 
+/// Horizontal chips (None + 1…6) instead of a menu picker — matches day pills / SS accent.
+private struct ProgramSupersetGroupSelector: View {
+    @Binding var selection: Int?
+
+    private static let groups = Array(1 ... 6)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Superset")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(BlueprintTheme.muted)
+            Text("Same number means back-to-back in one round. Leave as None for a standalone lift.")
+                .font(.caption2)
+                .foregroundStyle(BlueprintTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    chip(label: "None", value: nil)
+                    ForEach(Self.groups, id: \.self) { g in
+                        chip(label: "\(g)", value: g)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private func chip(label: String, value: Int?) -> some View {
+        let selected = selection == value
+        let isGroup = value != nil
+        return Button {
+            selection = value
+        } label: {
+            Text(label)
+                .font(.subheadline.weight(selected ? .semibold : .medium))
+                .foregroundStyle(foreground(for: selected, isGroup: isGroup))
+                .padding(.horizontal, isGroup ? 13 : 14)
+                .padding(.vertical, 9)
+                .background(background(for: selected, isGroup: isGroup))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(stroke(for: selected, isGroup: isGroup), lineWidth: 1)
+                )
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel(value: value))
+    }
+
+    private func foreground(for selected: Bool, isGroup: Bool) -> Color {
+        if selected {
+            return isGroup ? BlueprintTheme.amber : BlueprintTheme.cream
+        }
+        return BlueprintTheme.mutedLight
+    }
+
+    private func background(for selected: Bool, isGroup: Bool) -> Color {
+        if selected {
+            return isGroup ? BlueprintTheme.amber.opacity(0.24) : BlueprintTheme.purple.opacity(0.32)
+        }
+        return BlueprintTheme.bg.opacity(0.55)
+    }
+
+    private func stroke(for selected: Bool, isGroup: Bool) -> Color {
+        if selected {
+            return isGroup ? BlueprintTheme.amber.opacity(0.65) : BlueprintTheme.lavender.opacity(0.55)
+        }
+        return BlueprintTheme.border
+    }
+
+    private func accessibilityLabel(value: Int?) -> String {
+        if let value {
+            return "Superset group \(value)"
+        }
+        return "Not in a superset"
+    }
+}
+
 /// Collapsed by default; supersets, AMRAP, and warm-up prescriptions.
 private struct ProgramExerciseAdvancedOptionsSection: View {
     let summarySubtitle: String?
@@ -249,14 +329,7 @@ private struct ProgramExerciseAdvancedOptionsSection: View {
                         )
                 }
 
-                Picker("Superset", selection: $supersetGroup) {
-                    Text("No superset").tag(Int?.none)
-                    ForEach(1 ..< 10, id: \.self) { g in
-                        Text("Superset group \(g)").tag(Int?.some(g))
-                    }
-                }
-                .pickerStyle(.menu)
-                .tint(BlueprintTheme.lavender)
+                ProgramSupersetGroupSelector(selection: $supersetGroup)
 
                 Toggle(isOn: $isAmrap) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -268,7 +341,7 @@ private struct ProgramExerciseAdvancedOptionsSection: View {
                             .foregroundStyle(BlueprintTheme.muted)
                     }
                 }
-                .tint(BlueprintTheme.mint)
+                .tint(BlueprintTheme.lavender)
 
                 Toggle(isOn: $isWarmup) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -280,7 +353,7 @@ private struct ProgramExerciseAdvancedOptionsSection: View {
                             .foregroundStyle(BlueprintTheme.muted)
                     }
                 }
-                .tint(BlueprintTheme.mutedLight)
+                .tint(BlueprintTheme.lavender)
             }
             .padding(.top, 4)
         } label: {
@@ -750,7 +823,7 @@ struct ProgramEditorView: View {
                 var copy = vm.days
                 var d = copy[dayIndex]
                 var e = d.exercises[exIndex]
-                e.supersetGroup = new.flatMap { (1 ... 9).contains($0) ? $0 : nil }
+                e.supersetGroup = new.flatMap { (1 ... 6).contains($0) ? $0 : nil }
                 d.exercises[exIndex] = e
                 copy[dayIndex] = d
                 vm.days = copy

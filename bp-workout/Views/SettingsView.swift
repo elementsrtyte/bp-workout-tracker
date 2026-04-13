@@ -24,11 +24,11 @@ struct SettingsView: View {
 
                 Section("Anomaly filtering") {
                     Toggle("Filter outliers", isOn: $appSettings.filterAnomalies)
-                    Picker("Sensitivity", selection: $appSettings.anomalySensitivity) {
-                        Text("Low").tag(AnomalySensitivity.low)
-                        Text("Medium").tag(AnomalySensitivity.medium)
-                        Text("High").tag(AnomalySensitivity.high)
-                    }
+                    BlueprintMenuPicker(
+                        title: "Sensitivity",
+                        selection: $appSettings.anomalySensitivity,
+                        options: AnomalySensitivity.allCases.map { ($0, $0.rawValue.capitalized) }
+                    )
                     if appSettings.filterAnomalies {
                         LabeledContent("Flagged points (estimate)") {
                             Text("\(viewModel.anomalyFlaggedCount(loggedWorkouts: loggedWorkouts, appSettings: appSettings))")
