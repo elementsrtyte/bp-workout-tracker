@@ -4,11 +4,21 @@ import SwiftUI
 struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
     @EnvironmentObject private var appSettings: AppSettings
+    @ObservedObject private var auth: SupabaseSessionManager = .shared
     @Query(sort: \LoggedWorkout.date, order: .reverse) private var loggedWorkouts: [LoggedWorkout]
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Account") {
+                    Button("Sign out", role: .destructive) {
+                        auth.signOut()
+                    }
+                    Text("Workout sync uses your Supabase account. Sign out on shared devices.")
+                        .font(.caption)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
+                }
+
                 Section("Minimum reps per set") {
                     Stepper(value: $appSettings.minReps, in: 1 ... 20) {
                         Text("\(appSettings.minReps) reps")
@@ -45,6 +55,12 @@ struct SettingsView: View {
                 Section("Programs") {
                     Toggle("Program admin (edit bundled plans)", isOn: $appSettings.programAdminMode)
                     Text("When enabled, the Programs tab lets you edit Blueprint bundle plans. Changes are saved on this device only.")
+                        .font(.caption)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
+                }
+
+                Section("AI features") {
+                    Text("Program import, exercise swap ideas, and related-exercise suggestions go through the Blueprint API. You must be signed in. The API URL is set in app configuration (BLUEPRINT_API_URL); OpenAI is used only on the server.")
                         .font(.caption)
                         .foregroundStyle(BlueprintTheme.mutedLight)
                 }

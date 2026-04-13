@@ -24,13 +24,14 @@ enum ProgressMergeService {
 
         return buckets.values.map { pair in
             let sorted = pair.entries.sorted { $0.date < $1.date }
-            let weights = sorted.map(\.weight)
+            let stats = sorted.filter { $0.substitutedPerformedAs == nil }
+            let weights = stats.map(\.weight)
             let peak = weights.max() ?? 0
-            let first = sorted.first?.weight ?? 0
-            let last = sorted.last?.weight ?? 0
+            let first = stats.first?.weight ?? 0
+            let last = stats.last?.weight ?? 0
             return ExerciseProgress(
                 name: pair.displayName,
-                sessionCount: sorted.count,
+                sessionCount: stats.count,
                 peakWeight: peak,
                 firstWeight: first,
                 lastWeight: last,

@@ -13,6 +13,11 @@ struct WorkoutHubView: View {
     @State private var showProgramTargets = false
     @State private var showIncompleteSaveConfirm = false
     @State private var exerciseHistoryItem: ExerciseHistorySheetItem?
+    @State private var substitutionRoute: ExerciseSubstitutionSheetRoute?
+
+    private var catalogExerciseNames: [String] {
+        bundleData.mergedPrograms.flatMap(\.days).flatMap(\.exercises).map(\.name)
+    }
 
     var body: some View {
         ScrollView {
@@ -61,6 +66,16 @@ struct WorkoutHubView: View {
             Button("Keep editing", role: .cancel) {}
         } message: {
             Text(viewModel.incompleteSaveAlertMessage)
+        }
+        .sheet(item: $substitutionRoute) { route in
+            ExerciseSubstitutionSheet(
+                prescribedName: route.prescribedName,
+                currentName: route.currentName,
+                rowId: route.rowId,
+                hasLoggedSets: route.hasLoggedSets,
+                catalogExerciseNames: catalogExerciseNames,
+                viewModel: viewModel
+            )
         }
     }
 
@@ -168,14 +183,30 @@ struct WorkoutHubView: View {
                                         row: row,
                                         viewModel: viewModel,
                                         chrome: .standalone,
-                                        onHistory: { exerciseHistoryItem = ExerciseHistorySheetItem(name: row.name) }
+                                        onHistory: { exerciseHistoryItem = ExerciseHistorySheetItem(name: row.name) },
+                                        onSwapExercise: {
+                                            substitutionRoute = ExerciseSubstitutionSheetRoute(
+                                                rowId: row.id,
+                                                prescribedName: row.prescribedName,
+                                                currentName: row.name,
+                                                hasLoggedSets: !row.loggedSets.isEmpty
+                                            )
+                                        }
                                     )
                                 case .supersetBlock(let group, let rows):
                                     SupersetQuickLogBlock(
                                         group: group,
                                         rows: rows,
                                         viewModel: viewModel,
-                                        onHistory: { exerciseHistoryItem = ExerciseHistorySheetItem(name: $0) }
+                                        onHistory: { exerciseHistoryItem = ExerciseHistorySheetItem(name: $0) },
+                                        onSwapExercise: { row in
+                                            substitutionRoute = ExerciseSubstitutionSheetRoute(
+                                                rowId: row.id,
+                                                prescribedName: row.prescribedName,
+                                                currentName: row.name,
+                                                hasLoggedSets: !row.loggedSets.isEmpty
+                                            )
+                                        }
                                     )
                                 }
                             }
@@ -255,6 +286,14 @@ struct WorkoutHubView: View {
 
 // MARK: - Quick log segments (superset runs)
 
+private struct ExerciseSubstitutionSheetRoute: Identifiable {
+    var id: String { rowId }
+    let rowId: String
+    let prescribedName: String
+    let currentName: String
+    let hasLoggedSets: Bool
+}
+
 private enum QuickLogSegment: Identifiable {
     case single(QuickExerciseState)
     case supersetBlock(group: Int, rows: [QuickExerciseState])
@@ -300,6 +339,7 @@ private struct SupersetQuickLogBlock: View {
     let rows: [QuickExerciseState]
     @ObservedObject var viewModel: WorkoutHubViewModel
     var onHistory: (String) -> Void
+    var onSwapExercise: (QuickExerciseState) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -334,7 +374,8 @@ private struct SupersetQuickLogBlock: View {
                             row: row,
                             viewModel: viewModel,
                             chrome: .supersetGroupedRow,
-                            onHistory: { onHistory(row.name) }
+                            onHistory: { onHistory(row.name) },
+                            onSwapExercise: { onSwapExercise(row) }
                         )
                         if i < rows.count - 1 {
                             Divider()
@@ -369,6 +410,7 @@ private struct QuickLogExerciseCard: View {
     @ObservedObject var viewModel: WorkoutHubViewModel
     var chrome: QuickLogCardChrome = .standalone
     var onHistory: () -> Void
+    var onSwapExercise: () -> Void
 
     var body: some View {
         let inner = VStack(alignment: .leading, spacing: 10) {
@@ -412,6 +454,12 @@ private struct QuickLogExerciseCard: View {
                                 .overlay(Capsule().stroke(BlueprintTheme.border, lineWidth: 1))
                                 .clipShape(Capsule())
                         }
+                    }
+                    if row.isSubstituted {
+                        Text("Substituted · prescribed: \(row.prescribedName)")
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.amber)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     HStack(spacing: 8) {
                         if let hint = row.prHint {
@@ -477,6 +525,9 @@ private struct QuickLogExerciseCard: View {
                 .accessibilityLabel("Repeat last set")
 
                 Menu {
+                    Button("Swap exercise…") {
+                        onSwapExercise()
+                    }
                     Button("Undo last set", role: .destructive) {
                         viewModel.removeLastSet(for: row.id)
                     }

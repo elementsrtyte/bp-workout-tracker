@@ -3,12 +3,15 @@ import SwiftUI
 
 enum ProgramEditorRoute: Identifiable, Hashable {
     case create
+    /// Parsed from pasted text (LLM); new stable id already assigned on the program.
+    case createFromImport(WorkoutProgram)
     case editCustom(WorkoutProgram)
     case editBundled(WorkoutProgram)
 
     var id: String {
         switch self {
         case .create: return "__create__"
+        case .createFromImport(let p): return "i:\(p.id)"
         case .editCustom(let p): return "c:\(p.id)"
         case .editBundled(let p): return "b:\(p.id)"
         }
@@ -67,6 +70,13 @@ final class ProgramEditorViewModel: ObservableObject {
                     ]
                 ),
             ]
+        case .createFromImport(let p):
+            mode = .create
+            stableId = p.id
+            accentHexForSave = Self.normalizedAccentHex(p.color)
+            name = p.name
+            subtitle = p.subtitle
+            days = Self.daysFromProgram(p)
         case .editCustom(let p):
             mode = .editCustom
             stableId = p.id
@@ -384,12 +394,16 @@ struct ProgramEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var programLibrary: UserProgramLibrary
+    @ObservedObject private var auth: SupabaseSessionManager = .shared
     @ObservedObject private var bundle = BundleDataStore.shared
     @StateObject private var vm: ProgramEditorViewModel
 
     @State private var showRevertConfirm = false
     @State private var selectedDayIndex: Int = 0
     @FocusState private var focusedExerciseNameField: ProgramExerciseNameFieldID?
+    @State private var aiRelatedByField: [ProgramExerciseNameFieldID: [String]] = [:]
+    @State private var aiRelatedLoading: ProgramExerciseNameFieldID?
+    @State private var aiRelatedError: String?
 
     init(route: ProgramEditorRoute) {
         self.route = route
@@ -410,6 +424,7 @@ struct ProgramEditorView: View {
 
                     if vm.days.indices.contains(selectedDayIndex) {
                         selectedDayEditorCard(dayIndex: selectedDayIndex)
+                            .id("\(selectedDayIndex)|\(programEditorDayIdsFingerprint)")
                     }
                 }
 
@@ -440,10 +455,14 @@ struct ProgramEditorView: View {
                     .foregroundStyle(vm.canSave ? BlueprintTheme.cream : BlueprintTheme.muted)
             }
         }
-        .onChange(of: vm.days.count) { _, newCount in
-            if selectedDayIndex >= newCount {
-                selectedDayIndex = max(0, newCount - 1)
-            }
+        .onChange(of: vm.days.count) { _, _ in
+            reconcileProgramEditorDaySelection()
+        }
+        .onChange(of: programEditorDayIdsFingerprint) { _, _ in
+            reconcileProgramEditorDaySelection()
+        }
+        .onChange(of: focusedExerciseNameField) { _, _ in
+            aiRelatedError = nil
         }
         .confirmationDialog(
             "Revert this program to the version from the app bundle?",
@@ -461,6 +480,25 @@ struct ProgramEditorView: View {
             Text("Your local edits will be removed.")
         }
         .tint(BlueprintTheme.purple)
+    }
+
+    /// Stable fingerprint when days are added/removed/reordered (ids change).
+    private var programEditorDayIdsFingerprint: String {
+        vm.days.map(\.id.uuidString).joined(separator: ",")
+    }
+
+    /// Keeps selection valid after `vm.days` mutations; clears focus so stale TextField bindings cannot outlive the row.
+    private func reconcileProgramEditorDaySelection() {
+        guard !vm.days.isEmpty else { return }
+        if !vm.days.indices.contains(selectedDayIndex) {
+            selectedDayIndex = min(max(0, selectedDayIndex), vm.days.count - 1)
+            focusedExerciseNameField = nil
+        }
+    }
+
+    private func exerciseIndicesAreValid(dayIndex: Int, exIndex: Int) -> Bool {
+        guard vm.days.indices.contains(dayIndex) else { return false }
+        return vm.days[dayIndex].exercises.indices.contains(exIndex)
     }
 
     private var programDetailsCard: some View {
@@ -605,6 +643,14 @@ struct ProgramEditorView: View {
     }
 
     private func exerciseEditorBlock(dayIndex: Int, exIndex: Int) -> some View {
+        Group {
+            if exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) {
+                exerciseEditorBlockContent(dayIndex: dayIndex, exIndex: exIndex)
+            }
+        }
+    }
+
+    private func exerciseEditorBlockContent(dayIndex: Int, exIndex: Int) -> some View {
         let nameFieldID = ProgramExerciseNameFieldID(dayIndex: dayIndex, exIndex: exIndex)
         let canRemoveExercise = vm.days[dayIndex].exercises.count > 1
         return VStack(alignment: .leading, spacing: 10) {
@@ -696,8 +742,20 @@ struct ProgramEditorView: View {
 
     private func deleteDay(at index: Int) {
         guard vm.days.count > 1 else { return }
+        let removed = index
+        let countAfter = vm.days.count - 1
+        var newSelected = selectedDayIndex
+        if newSelected > removed {
+            newSelected -= 1
+        } else if newSelected == removed {
+            newSelected = min(max(0, removed - 1), max(0, countAfter - 1))
+        }
+        newSelected = min(max(0, newSelected), max(0, countAfter - 1))
+        focusedExerciseNameField = nil
+        selectedDayIndex = newSelected
         vm.removeDay(at: IndexSet(integer: index))
-        selectedDayIndex = min(max(0, index - 1), max(0, vm.days.count - 1))
+        selectedDayIndex = min(max(0, selectedDayIndex), max(0, vm.days.count - 1))
+        reconcileProgramEditorDaySelection()
     }
 
     private func editorLabeledField(title: String, prompt: String, text: Binding<String>) -> some View {
@@ -721,6 +779,7 @@ struct ProgramEditorView: View {
     private var title: String {
         switch route {
         case .create: return "New program"
+        case .createFromImport: return "Imported program"
         case .editCustom: return "Edit program"
         case .editBundled: return "Edit program (admin)"
         }
@@ -728,8 +787,12 @@ struct ProgramEditorView: View {
 
     private func dayLabelBinding(_ dayIndex: Int) -> Binding<String> {
         Binding(
-            get: { vm.days[dayIndex].label },
+            get: {
+                guard vm.days.indices.contains(dayIndex) else { return "" }
+                return vm.days[dayIndex].label
+            },
             set: { new in
+                guard vm.days.indices.contains(dayIndex) else { return }
                 var copy = vm.days
                 var d = copy[dayIndex]
                 d.label = new
@@ -741,31 +804,101 @@ struct ProgramEditorView: View {
 
     @ViewBuilder
     private func exerciseNameSuggestionList(dayIndex: Int, exIndex: Int, fieldID: ProgramExerciseNameFieldID) -> some View {
-        if focusedExerciseNameField == fieldID {
+        if focusedExerciseNameField == fieldID, exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) {
             let query = vm.days[dayIndex].exercises[exIndex].name
             let suggestions = CommonExerciseNames.suggestions(matching: query, limit: 12)
-            if !suggestions.isEmpty {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(suggestions, id: \.self) { suggestion in
-                            Button {
-                                applyExerciseName(dayIndex: dayIndex, exIndex: exIndex, name: suggestion)
-                                focusedExerciseNameField = nil
-                            } label: {
-                                Text(suggestion)
-                                    .font(.subheadline)
-                                    .foregroundStyle(BlueprintTheme.cream)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 6)
+            let aiReady = BlueprintAPIConfig.isConfigured && auth.phase == .signedIn
+            let aiPicks = aiRelatedByField[fieldID] ?? []
+            if !suggestions.isEmpty || aiReady {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !suggestions.isEmpty {
+                        Text("Catalog matches")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(BlueprintTheme.muted)
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(suggestions, id: \.self) { suggestion in
+                                    Button {
+                                        applyExerciseName(dayIndex: dayIndex, exIndex: exIndex, name: suggestion)
+                                        focusedExerciseNameField = nil
+                                    } label: {
+                                        Text(suggestion)
+                                            .font(.subheadline)
+                                            .foregroundStyle(BlueprintTheme.cream)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.vertical, 8)
+                                            .padding(.horizontal, 6)
+                                    }
+                                    .buttonStyle(.plain)
+                                    Divider()
+                                        .background(BlueprintTheme.muted.opacity(0.35))
+                                }
                             }
-                            .buttonStyle(.plain)
-                            Divider()
-                                .background(BlueprintTheme.muted.opacity(0.35))
+                        }
+                        .frame(maxHeight: 176)
+                    }
+
+                    if aiReady {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("AI — catalog only")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(BlueprintTheme.muted)
+                            Text("Suggestions are restricted to names in the static catalog list.")
+                                .font(.caption2)
+                                .foregroundStyle(BlueprintTheme.mutedLight)
+                            Button {
+                                Task {
+                                    await loadAIRelatedCatalogPicks(
+                                        dayIndex: dayIndex,
+                                        exIndex: exIndex,
+                                        fieldID: fieldID
+                                    )
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if aiRelatedLoading == fieldID {
+                                        ProgressView()
+                                    }
+                                    Text(aiRelatedLoading == fieldID ? "Loading…" : "Suggest related exercises")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(BlueprintTheme.lavender)
+                            .disabled(aiRelatedLoading == fieldID)
+
+                            if let aiRelatedError, focusedExerciseNameField == fieldID {
+                                Text(aiRelatedError)
+                                    .font(.caption2)
+                                    .foregroundStyle(BlueprintTheme.danger)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            if !aiPicks.isEmpty {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
+                                        ForEach(aiPicks, id: \.self) { pick in
+                                            Button {
+                                                applyExerciseName(dayIndex: dayIndex, exIndex: exIndex, name: pick)
+                                                focusedExerciseNameField = nil
+                                            } label: {
+                                                Text(pick)
+                                                    .font(.caption.weight(.medium))
+                                                    .foregroundStyle(BlueprintTheme.cream)
+                                                    .padding(.horizontal, 10)
+                                                    .padding(.vertical, 8)
+                                                    .background(BlueprintTheme.purple.opacity(0.28))
+                                                    .clipShape(Capsule())
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-                .frame(maxHeight: 176)
+                .padding(10)
                 .background(BlueprintTheme.bg.opacity(0.98))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
@@ -776,7 +909,41 @@ struct ProgramEditorView: View {
         }
     }
 
+    private func loadAIRelatedCatalogPicks(
+        dayIndex: Int,
+        exIndex: Int,
+        fieldID: ProgramExerciseNameFieldID
+    ) async {
+               guard BlueprintAPIConfig.isConfigured, auth.phase == .signedIn else {
+            aiRelatedError = "Sign in and configure the Blueprint API to use AI suggestions."
+            return
+        }
+        guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return }
+        let name = vm.days[dayIndex].exercises[exIndex].name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            aiRelatedError = "Type an exercise name (or partial) for context, then try again."
+            return
+        }
+        aiRelatedError = nil
+        aiRelatedLoading = fieldID
+        defer { aiRelatedLoading = nil }
+        do {
+            let picks = try await OpenAIRelatedCatalogExerciseClient.fetchRelated(
+                exerciseName: name,
+                allowedExactNames: CommonExerciseNames.all,
+                limit: 12
+            )
+            aiRelatedByField[fieldID] = picks
+            if picks.isEmpty {
+                aiRelatedError = "No catalog matches returned — try a different name or tap again."
+            }
+        } catch {
+            aiRelatedError = error.localizedDescription
+        }
+    }
+
     private func applyExerciseName(dayIndex: Int, exIndex: Int, name: String) {
+        guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return }
         var copy = vm.days
         var d = copy[dayIndex]
         var e = d.exercises[exIndex]
@@ -788,8 +955,12 @@ struct ProgramEditorView: View {
 
     private func exerciseNameBinding(dayIndex: Int, exIndex: Int) -> Binding<String> {
         Binding(
-            get: { vm.days[dayIndex].exercises[exIndex].name },
+            get: {
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return "" }
+                return vm.days[dayIndex].exercises[exIndex].name
+            },
             set: { new in
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return }
                 var copy = vm.days
                 var d = copy[dayIndex]
                 var e = d.exercises[exIndex]
@@ -803,8 +974,12 @@ struct ProgramEditorView: View {
 
     private func exerciseTargetSetsBinding(dayIndex: Int, exIndex: Int) -> Binding<Int> {
         Binding(
-            get: { vm.days[dayIndex].exercises[exIndex].targetSets },
+            get: {
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return 3 }
+                return vm.days[dayIndex].exercises[exIndex].targetSets
+            },
             set: { new in
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return }
                 var copy = vm.days
                 var d = copy[dayIndex]
                 var e = d.exercises[exIndex]
@@ -818,8 +993,12 @@ struct ProgramEditorView: View {
 
     private func exerciseSupersetGroupBinding(dayIndex: Int, exIndex: Int) -> Binding<Int?> {
         Binding(
-            get: { vm.days[dayIndex].exercises[exIndex].supersetGroup },
+            get: {
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return nil }
+                return vm.days[dayIndex].exercises[exIndex].supersetGroup
+            },
             set: { new in
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return }
                 var copy = vm.days
                 var d = copy[dayIndex]
                 var e = d.exercises[exIndex]
@@ -833,8 +1012,12 @@ struct ProgramEditorView: View {
 
     private func exerciseAmrapBinding(dayIndex: Int, exIndex: Int) -> Binding<Bool> {
         Binding(
-            get: { vm.days[dayIndex].exercises[exIndex].isAmrap },
+            get: {
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return false }
+                return vm.days[dayIndex].exercises[exIndex].isAmrap
+            },
             set: { new in
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return }
                 var copy = vm.days
                 var d = copy[dayIndex]
                 var e = d.exercises[exIndex]
@@ -848,8 +1031,12 @@ struct ProgramEditorView: View {
 
     private func exerciseWarmupBinding(dayIndex: Int, exIndex: Int) -> Binding<Bool> {
         Binding(
-            get: { vm.days[dayIndex].exercises[exIndex].isWarmup },
+            get: {
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return false }
+                return vm.days[dayIndex].exercises[exIndex].isWarmup
+            },
             set: { new in
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return }
                 var copy = vm.days
                 var d = copy[dayIndex]
                 var e = d.exercises[exIndex]
@@ -863,8 +1050,12 @@ struct ProgramEditorView: View {
 
     private func exerciseNotesBinding(dayIndex: Int, exIndex: Int) -> Binding<String> {
         Binding(
-            get: { vm.days[dayIndex].exercises[exIndex].notes },
+            get: {
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return "" }
+                return vm.days[dayIndex].exercises[exIndex].notes
+            },
             set: { new in
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return }
                 var copy = vm.days
                 var d = copy[dayIndex]
                 var e = d.exercises[exIndex]
@@ -884,8 +1075,11 @@ struct ProgramEditorView: View {
         case .editBundled:
             bundle.setBundledOverride(program)
         }
-        if case .create = route {
+        switch route {
+        case .create, .createFromImport:
             programLibrary.setProgramInLibrary(program.id, enabled: true, catalog: bundle.mergedPrograms)
+        default:
+            break
         }
         dismiss()
     }

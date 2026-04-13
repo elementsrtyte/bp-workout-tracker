@@ -7,9 +7,12 @@ struct bp_workoutApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            AuthRootView()
                 .environmentObject(appSettings)
                 .environmentObject(UserProgramLibrary.shared)
+                .onOpenURL { url in
+                    Task { await SupabaseSessionManager.shared.handleAuthRedirect(url) }
+                }
         }
         .modelContainer(for: [LoggedWorkout.self, LoggedExercise.self, LoggedSet.self])
     }

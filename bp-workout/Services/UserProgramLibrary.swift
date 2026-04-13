@@ -13,6 +13,11 @@ final class UserProgramLibrary: ObservableObject {
 
     private init() {}
 
+    /// `true` once the user has changed profile membership from the default “all programs” state.
+    var hasCustomLibrarySelection: Bool {
+        UserDefaults.standard.object(forKey: defaultsKey) != nil
+    }
+
     func idsInLibrary(catalogIds: [String]) -> Set<String> {
         let catalog = Set(catalogIds)
         if UserDefaults.standard.object(forKey: defaultsKey) == nil {

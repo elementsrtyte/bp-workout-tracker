@@ -96,6 +96,7 @@ final class LogWorkoutEditorViewModel: ObservableObject {
         }
         guard !workout.exercises.isEmpty else { return }
         modelContext.insert(workout)
+        Task { await BlueprintWorkoutSyncClient.push(workout) }
         onComplete()
     }
 }

@@ -23,6 +23,19 @@ struct ExerciseHistoryView: View {
         )
     }
 
+    /// Trend line / PR stats: real work for this exercise only (not mirror rows from a prescribed slot).
+    private var chartEntries: [ProgressEntry] {
+        entries.filter { $0.substitutedPerformedAs == nil }
+    }
+
+    private var substitutionVisits: [ProgressEntry] {
+        entries.filter { $0.substitutedPerformedAs != nil }
+    }
+
+    private var substitutionSessionCount: Int {
+        Set(substitutionVisits.map(\.date)).count
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -33,14 +46,25 @@ struct ExerciseHistoryView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 24)
                 } else {
-                    Text("\(entries.count) logged sets")
+                    Text(chartSummaryLine)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(BlueprintTheme.mutedLight)
 
-                    ExerciseHistoryWeightChart(entries: entries)
+                    if chartEntries.isEmpty {
+                        Text("No direct sets for this lift yet — you’ve only logged it as a swap-in for another prescription. See below.")
+                            .font(.caption)
+                            .foregroundStyle(BlueprintTheme.mutedLight)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        ExerciseHistoryWeightChart(entries: chartEntries)
+                    }
 
-                    if let first = entries.first, let last = entries.last {
-                        let peak = entries.map(\.weight).max() ?? first.weight
+                    if !substitutionVisits.isEmpty {
+                        substitutionVisitsSection
+                    }
+
+                    if let first = chartEntries.first, let last = chartEntries.last {
+                        let peak = chartEntries.map(\.weight).max() ?? first.weight
                         HStack {
                             miniStat(title: "First", value: formatWeight(first.weight))
                             Spacer()
@@ -61,6 +85,57 @@ struct ExerciseHistoryView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }
+            }
+        }
+    }
+
+    private var chartSummaryLine: String {
+        if substitutionSessionCount > 0 {
+            let sess = substitutionSessionCount
+            return "\(chartEntries.count) logged sets · \(sess) session\(sess == 1 ? "" : "s") with a swap for this prescription"
+        }
+        return "\(entries.count) logged sets"
+    }
+
+    private var substitutionVisitsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("When you substituted another lift")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(BlueprintTheme.muted)
+            Text("Same workout data as above, shown here so this prescription’s history stays complete.")
+                .font(.caption2)
+                .foregroundStyle(BlueprintTheme.mutedLight)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(
+                Dictionary(grouping: substitutionVisits, by: \.date).keys.sorted(),
+                id: \.self
+            ) { date in
+                let rows = substitutionVisits.filter { $0.date == date }
+                if let first = rows.first, let performed = first.substitutedPerformedAs {
+                    let peak = rows.map(\.weight).max() ?? first.weight
+                    let reps = rows.map(\.reps).max() ?? first.reps
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "arrow.triangle.swap")
+                            .font(.caption)
+                            .foregroundStyle(BlueprintTheme.amber)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(date)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(BlueprintTheme.cream)
+                            Text("Performed: \(performed) · up to \(formatWeight(peak)) × \(reps)")
+                                .font(.caption2)
+                                .foregroundStyle(BlueprintTheme.mutedLight)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(BlueprintTheme.cardInner)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(BlueprintTheme.border, lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
             }
         }
     }
@@ -106,14 +181,25 @@ struct ExerciseHistoryView: View {
             }
         }
 
-        let sorted = raw.sorted { $0.date < $1.date }
-        return AnomalyFilter.getCleanEntries(
-            entries: sorted,
+        let forTrend = raw.filter { $0.substitutedPerformedAs == nil }.sorted { $0.date < $1.date }
+        let cleanedTrend = AnomalyFilter.getCleanEntries(
+            entries: forTrend,
             filterEnabled: appSettings.filterAnomalies,
             sensitivity: appSettings.anomalySensitivity,
             minReps: appSettings.minReps
         )
         .sorted { $0.date < $1.date }
+
+        let subOnly = raw.filter { $0.substitutedPerformedAs != nil }
+        if subOnly.isEmpty { return cleanedTrend }
+
+        let cleanedSub = AnomalyFilter.getCleanEntries(
+            entries: subOnly,
+            filterEnabled: appSettings.filterAnomalies,
+            sensitivity: appSettings.anomalySensitivity,
+            minReps: appSettings.minReps
+        )
+        return (cleanedTrend + cleanedSub).sorted { $0.date < $1.date }
     }
 }
 

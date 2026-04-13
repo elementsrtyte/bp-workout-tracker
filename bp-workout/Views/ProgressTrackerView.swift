@@ -122,6 +122,7 @@ private struct ExerciseProgressCard: View {
 
     private var ex: ExerciseProgress { row.exercise }
     private var cleanEntries: [ProgressEntry] { row.cleanEntries }
+    private var chartEntries: [ProgressEntry] { row.chartEligibleEntries }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -140,6 +141,14 @@ private struct ExerciseProgressCard: View {
         .onChange(of: chartMode) { _, _ in scrubbedEntry = nil }
     }
 
+    private var chartPointsLabel: String {
+        let sub = cleanEntries.count - chartEntries.count
+        if sub > 0 {
+            return "\(chartEntries.count) points · \(sub) swap-in session\(sub == 1 ? "" : "s")"
+        }
+        return "\(chartEntries.count) points"
+    }
+
     private var header: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
@@ -149,7 +158,7 @@ private struct ExerciseProgressCard: View {
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
-                    Text("\(cleanEntries.count) points")
+                    Text(chartPointsLabel)
                         .font(.caption2)
                         .foregroundStyle(BlueprintTheme.muted)
                     if row.removedCount > 0 {
@@ -166,9 +175,9 @@ private struct ExerciseProgressCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             if chartMode != .reprange {
                 let pct = chartMode == .volume
-                    ? ProgressMetrics.volumePctChange(entries: cleanEntries)
-                    : ProgressMetrics.pctChange(entries: cleanEntries)
-                let trend = ProgressMetrics.trend(entries: cleanEntries)
+                    ? ProgressMetrics.volumePctChange(entries: chartEntries)
+                    : ProgressMetrics.pctChange(entries: chartEntries)
+                let trend = ProgressMetrics.trend(entries: chartEntries)
                 VStack(alignment: .trailing, spacing: 3) {
                     HStack(spacing: 4) {
                         Image(systemName: trend == .up ? "arrow.up.right" : trend == .down ? "arrow.down.right" : "arrow.right")
@@ -219,17 +228,17 @@ private struct ExerciseProgressCard: View {
 
     @ViewBuilder
     private var chartArea: some View {
-        if cleanEntries.isEmpty {
-            Text("All entries filtered")
+        if chartEntries.isEmpty {
+            Text(cleanEntries.isEmpty ? "All entries filtered" : "No trend data — swap-only visits for this exercise")
                 .font(.caption)
                 .foregroundStyle(BlueprintTheme.muted)
                 .frame(maxWidth: .infinity, minHeight: 80)
         } else if chartMode == .reprange {
-            RepRangeBars(entries: cleanEntries)
+            RepRangeBars(entries: chartEntries)
                 .frame(height: 90)
         } else {
             InteractiveProgressLineChart(
-                entries: cleanEntries,
+                entries: chartEntries,
                 chartMode: chartMode,
                 lineColor: { lineColor(for: $0) },
                 scrubbedEntry: $scrubbedEntry
@@ -244,8 +253,8 @@ private struct ExerciseProgressCard: View {
 
     private var footer: some View {
         Group {
-            if chartMode == .weight, let first = cleanEntries.first, let last = cleanEntries.last {
-                let peak = cleanEntries.map(\.weight).max() ?? first.weight
+            if chartMode == .weight, let first = chartEntries.first, let last = chartEntries.last {
+                let peak = chartEntries.map(\.weight).max() ?? first.weight
                 HStack {
                     miniStat(title: "Start", value: formatWeight(first.weight), color: BlueprintTheme.mutedLight)
                     Spacer()
@@ -254,10 +263,10 @@ private struct ExerciseProgressCard: View {
                     miniStat(title: "Last", value: formatWeight(last.weight), color: BlueprintTheme.mutedLight)
                 }
                 .font(.caption2)
-            } else if chartMode == .volume, let first = cleanEntries.first, let last = cleanEntries.last {
+            } else if chartMode == .volume, let first = chartEntries.first, let last = chartEntries.last {
                 let fv = first.weight * Double(first.reps)
                 let lv = last.weight * Double(last.reps)
-                let pk = cleanEntries.map { $0.weight * Double($0.reps) }.max() ?? fv
+                let pk = chartEntries.map { $0.weight * Double($0.reps) }.max() ?? fv
                 HStack {
                     miniStat(title: "Start", value: formatVol(fv), color: BlueprintTheme.mutedLight)
                     Spacer()
@@ -267,7 +276,7 @@ private struct ExerciseProgressCard: View {
                 }
                 .font(.caption2)
             } else if chartMode == .reprange {
-                let rows = ProgressMetrics.repRangeCounts(entries: cleanEntries).filter { $0.count > 0 }
+                let rows = ProgressMetrics.repRangeCounts(entries: chartEntries).filter { $0.count > 0 }
                 FlowRow(items: rows)
             }
         }

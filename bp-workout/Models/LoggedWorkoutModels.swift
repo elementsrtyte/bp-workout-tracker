@@ -5,6 +5,8 @@ import SwiftData
 final class LoggedWorkout {
     var id: UUID
     var date: Date
+    /// Stable program id from `WorkoutProgram.id` when logged from the Workout hub; nil for legacy rows.
+    var programId: String?
     var programName: String?
     var dayLabel: String?
     var notes: String?
@@ -14,6 +16,7 @@ final class LoggedWorkout {
     init(
         id: UUID = UUID(),
         date: Date = .now,
+        programId: String? = nil,
         programName: String? = nil,
         dayLabel: String? = nil,
         notes: String? = nil,
@@ -21,6 +24,7 @@ final class LoggedWorkout {
     ) {
         self.id = id
         self.date = date
+        self.programId = programId
         self.programName = programName
         self.dayLabel = dayLabel
         self.notes = notes
@@ -31,15 +35,25 @@ final class LoggedWorkout {
 @Model
 final class LoggedExercise {
     var id: UUID
+    /// Movement actually logged (after any session substitution).
     var name: String
+    /// Program line name when the user substituted; nil if `name` matches the prescription.
+    var prescribedName: String?
     var sortOrder: Int
     @Relationship(deleteRule: .cascade, inverse: \LoggedSet.exercise)
     var sets: [LoggedSet]
     var workout: LoggedWorkout?
 
-    init(id: UUID = UUID(), name: String, sortOrder: Int = 0, sets: [LoggedSet] = []) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        prescribedName: String? = nil,
+        sortOrder: Int = 0,
+        sets: [LoggedSet] = []
+    ) {
         self.id = id
         self.name = name
+        self.prescribedName = prescribedName
         self.sortOrder = sortOrder
         self.sets = sets
     }
@@ -90,16 +104,34 @@ enum LoggedWorkoutProgressExport {
             let sortedEx = w.exercises.sorted { $0.sortOrder < $1.sortOrder }
             for ex in sortedEx {
                 let sortedSets = ex.sets.sorted { $0.order < $1.order }
+                let prescribed = ex.prescribedName?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let prescribedDistinct = prescribed.flatMap { p -> String? in
+                    guard !p.isEmpty, ExerciseNameNormalizer.key(p) != ExerciseNameNormalizer.key(ex.name) else { return nil }
+                    return p
+                }
                 for s in sortedSets {
-                    let entry = ProgressEntry(
+                    let base = ProgressEntry(
                         date: dateString,
                         weight: s.weight,
                         reps: s.reps,
                         maxReps: s.reps,
                         program: program,
-                        dayTitle: dayTitle
+                        dayTitle: dayTitle,
+                        substitutedPerformedAs: nil
                     )
-                    result[ex.name, default: []].append(entry)
+                    result[ex.name, default: []].append(base)
+                    if let p = prescribedDistinct {
+                        let mirror = ProgressEntry(
+                            date: dateString,
+                            weight: s.weight,
+                            reps: s.reps,
+                            maxReps: s.reps,
+                            program: program,
+                            dayTitle: dayTitle,
+                            substitutedPerformedAs: ex.name
+                        )
+                        result[p, default: []].append(mirror)
+                    }
                 }
             }
         }

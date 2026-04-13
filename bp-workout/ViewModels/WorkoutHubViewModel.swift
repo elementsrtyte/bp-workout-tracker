@@ -8,17 +8,21 @@ struct LoggedSetSnapshot: Equatable {
 }
 
 struct QuickExerciseState: Identifiable, Equatable {
-    var id: String { "\(sortOrder)-\(name)" }
+    /// Stable identity for this line on the training day (survives session exercise renames).
+    var id: String { "slot-\(sortOrder)" }
     let sortOrder: Int
-    let name: String
+    /// From the program template (unchanged for this session).
+    let prescribedName: String
+    /// May differ when the user substitutes equipment for today only.
+    var name: String
     /// Peak-based plan line (may include progressive bump).
-    let planDisplay: String
+    var planDisplay: String
     /// Working sets prescribed by the program for this exercise.
     let targetSets: Int
     var workingWeight: Double
     var workingReps: Int
     var loggedSets: [LoggedSetSnapshot]
-    let prHint: String?
+    var prHint: String?
     /// Same index = same superset round; nil if not supersetted.
     let supersetGroup: Int?
     /// Program prescribes reps to failure for each working set.
@@ -30,6 +34,7 @@ struct QuickExerciseState: Identifiable, Equatable {
 
     var setsRemaining: Int { max(0, targetSets - loggedSets.count) }
     var isSetsComplete: Bool { loggedSets.count >= targetSets }
+    var isSubstituted: Bool { name != prescribedName }
 }
 
 @MainActor
@@ -54,11 +59,56 @@ final class WorkoutHubViewModel: ObservableObject {
 
     private struct PersistedDraft: Codable, Equatable {
         struct Line: Codable, Equatable {
-            var exerciseName: String
             var sortOrder: Int
+            /// Display / logging name (may be a session substitute).
+            var exerciseName: String
+            /// Program template name when `exerciseName` was substituted; omitted when equal.
+            var prescribedName: String?
             var workingWeight: Double
             var workingReps: Int
             var sets: [PersistedSet]
+
+            enum CodingKeys: String, CodingKey {
+                case sortOrder, exerciseName, prescribedName, workingWeight, workingReps, sets
+            }
+
+            init(
+                sortOrder: Int,
+                exerciseName: String,
+                prescribedName: String?,
+                workingWeight: Double,
+                workingReps: Int,
+                sets: [PersistedSet]
+            ) {
+                self.sortOrder = sortOrder
+                self.exerciseName = exerciseName
+                self.prescribedName = prescribedName
+                self.workingWeight = workingWeight
+                self.workingReps = workingReps
+                self.sets = sets
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                sortOrder = try c.decode(Int.self, forKey: .sortOrder)
+                exerciseName = try c.decode(String.self, forKey: .exerciseName)
+                prescribedName = try c.decodeIfPresent(String.self, forKey: .prescribedName)
+                workingWeight = try c.decode(Double.self, forKey: .workingWeight)
+                workingReps = try c.decode(Int.self, forKey: .workingReps)
+                sets = try c.decode([PersistedSet].self, forKey: .sets)
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(sortOrder, forKey: .sortOrder)
+                try c.encode(exerciseName, forKey: .exerciseName)
+                if let p = prescribedName, p != exerciseName {
+                    try c.encode(p, forKey: .prescribedName)
+                }
+                try c.encode(workingWeight, forKey: .workingWeight)
+                try c.encode(workingReps, forKey: .workingReps)
+                try c.encode(sets, forKey: .sets)
+            }
         }
         struct PersistedSet: Codable, Equatable {
             var weight: Double
@@ -215,6 +265,58 @@ final class WorkoutHubViewModel: ObservableObject {
         persistDraft()
     }
 
+    /// Swap the exercise for **this session only** (does not edit the saved program). Recomputes weight/reps hints from history.
+    func applySessionExerciseSubstitution(rowId: String, newDisplayName: String, clearLoggedSets: Bool) {
+        guard let day = activeDay, let program = activeProgram else { return }
+        guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
+        guard i >= 0, i < day.exercises.count else { return }
+        let trimmed = newDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if !exerciseRows[i].loggedSets.isEmpty, !clearLoggedSets { return }
+
+        let ex = day.exercises[i]
+        let sug = WorkoutPrefill.suggest(
+            exerciseName: trimmed,
+            templateMax: ex.maxWeight,
+            loggedWorkouts: lastLoggedSnapshot,
+            progressBundle: bundle.progressBundle,
+            prescriptionIsAmrap: ex.prescriptionIsAmrap,
+            prescriptionIsWarmup: ex.prescriptionIsWarmup
+        )
+        exerciseRows[i].name = trimmed
+        exerciseRows[i].planDisplay = sug.planDisplay
+        exerciseRows[i].prHint = sug.prHint
+        exerciseRows[i].workingWeight = sug.weight
+        exerciseRows[i].workingReps = sug.reps
+        exerciseRows[i].loggedSets = []
+        exerciseRows = exerciseRows
+        persistDraft()
+    }
+
+    func revertSessionExerciseSubstitution(rowId: String) {
+        guard let day = activeDay, let program = activeProgram else { return }
+        guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
+        guard i >= 0, i < day.exercises.count else { return }
+        if !exerciseRows[i].loggedSets.isEmpty { return }
+        let ex = day.exercises[i]
+        let sug = WorkoutPrefill.suggest(
+            exerciseName: ex.name,
+            templateMax: ex.maxWeight,
+            loggedWorkouts: lastLoggedSnapshot,
+            progressBundle: bundle.progressBundle,
+            prescriptionIsAmrap: ex.prescriptionIsAmrap,
+            prescriptionIsWarmup: ex.prescriptionIsWarmup
+        )
+        exerciseRows[i].name = ex.name
+        exerciseRows[i].planDisplay = sug.planDisplay
+        exerciseRows[i].prHint = sug.prHint
+        exerciseRows[i].workingWeight = sug.weight
+        exerciseRows[i].workingReps = sug.reps
+        exerciseRows[i].loggedSets = []
+        exerciseRows = exerciseRows
+        persistDraft()
+    }
+
     func finishAndSave(modelContext: ModelContext) {
         guard let p = activeProgram, let day = activeDay else { return }
         let rows = exerciseRows.filter { !$0.loggedSets.isEmpty }
@@ -222,12 +324,17 @@ final class WorkoutHubViewModel: ObservableObject {
 
         let workout = LoggedWorkout(
             date: .now,
+            programId: p.id,
             programName: p.name,
             dayLabel: day.label,
             notes: nil
         )
         for row in rows.sorted(by: { $0.sortOrder < $1.sortOrder }) {
-            let ex = LoggedExercise(name: row.name, sortOrder: row.sortOrder)
+            let ex = LoggedExercise(
+                name: row.name,
+                prescribedName: row.isSubstituted ? row.prescribedName : nil,
+                sortOrder: row.sortOrder
+            )
             for (idx, s) in row.loggedSets.enumerated() {
                 ex.sets.append(LoggedSet(weight: s.weight, reps: s.reps, order: idx))
             }
@@ -238,6 +345,7 @@ final class WorkoutHubViewModel: ObservableObject {
         // Keep suggestions in sync before @Query delivers the new row.
         lastLoggedSnapshot = ([workout] + lastLoggedSnapshot).sorted { $0.date > $1.date }
         rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
+        Task { await BlueprintWorkoutSyncClient.push(workout) }
     }
 
     // MARK: - Private
@@ -282,6 +390,7 @@ final class WorkoutHubViewModel: ObservableObject {
             let prescribed = ex.prescribedSets
             var state = QuickExerciseState(
                 sortOrder: idx,
+                prescribedName: ex.name,
                 name: ex.name,
                 planDisplay: sug.planDisplay,
                 targetSets: prescribed,
@@ -295,7 +404,21 @@ final class WorkoutHubViewModel: ObservableObject {
                 programNotes: ex.trimmedProgramNotes
             )
             if let draft = loadDraft(), draft.programId == program.id, draft.dayLabel == day.label,
-               let line = draft.lines.first(where: { $0.exerciseName == ex.name && $0.sortOrder == idx }) {
+               let line = draft.lines.first(where: { $0.sortOrder == idx }) {
+                let draftName = line.exerciseName
+                state.name = draftName
+                if draftName != ex.name {
+                    let subSug = WorkoutPrefill.suggest(
+                        exerciseName: draftName,
+                        templateMax: ex.maxWeight,
+                        loggedWorkouts: logged,
+                        progressBundle: bundleData,
+                        prescriptionIsAmrap: ex.prescriptionIsAmrap,
+                        prescriptionIsWarmup: ex.prescriptionIsWarmup
+                    )
+                    state.planDisplay = subSug.planDisplay
+                    state.prHint = subSug.prHint
+                }
                 state.workingWeight = line.workingWeight
                 state.workingReps = line.workingReps
                 let loaded = line.sets.map { LoggedSetSnapshot(weight: $0.weight, reps: $0.reps) }
@@ -315,8 +438,9 @@ final class WorkoutHubViewModel: ObservableObject {
         guard let program = activeProgram, let day = activeDay else { return }
         let lines: [PersistedDraft.Line] = exerciseRows.map { r in
             PersistedDraft.Line(
-                exerciseName: r.name,
                 sortOrder: r.sortOrder,
+                exerciseName: r.name,
+                prescribedName: r.prescribedName == r.name ? nil : r.prescribedName,
                 workingWeight: r.workingWeight,
                 workingReps: r.workingReps,
                 sets: r.loggedSets.map { PersistedDraft.PersistedSet(weight: $0.weight, reps: $0.reps) }

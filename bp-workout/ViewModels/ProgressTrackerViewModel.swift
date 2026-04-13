@@ -60,15 +60,21 @@ final class ProgressTrackerViewModel: ObservableObject {
         }
         switch sortBy {
         case .sessions:
-            list.sort { $0.clean.count > $1.clean.count }
+            list.sort {
+                let a = $0.clean.filter { $0.substitutedPerformedAs == nil }.count
+                let b = $1.clean.filter { $0.substitutedPerformedAs == nil }.count
+                return a > b
+            }
         case .gain:
             list.sort {
-                ProgressMetrics.pctChange(entries: $0.clean) > ProgressMetrics.pctChange(entries: $1.clean)
+                let ea = $0.clean.filter { $0.substitutedPerformedAs == nil }
+                let eb = $1.clean.filter { $0.substitutedPerformedAs == nil }
+                return ProgressMetrics.pctChange(entries: ea) > ProgressMetrics.pctChange(entries: eb)
             }
         case .peak:
             list.sort {
-                let pa = $0.clean.map(\.weight).max() ?? 0
-                let pb = $1.clean.map(\.weight).max() ?? 0
+                let pa = $0.clean.filter { $0.substitutedPerformedAs == nil }.map(\.weight).max() ?? 0
+                let pb = $1.clean.filter { $0.substitutedPerformedAs == nil }.map(\.weight).max() ?? 0
                 return pa > pb
             }
         case .alpha:

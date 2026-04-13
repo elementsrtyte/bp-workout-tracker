@@ -32,4 +32,9 @@ struct ProgressExerciseRow: Identifiable {
     let exercise: ExerciseProgress
     let cleanEntries: [ProgressEntry]
     let removedCount: Int
+
+    /// Points that count toward load/rep trends for this exercise (excludes mirror rows under a prescribed name).
+    var chartEligibleEntries: [ProgressEntry] {
+        cleanEntries.filter { $0.substitutedPerformedAs == nil }
+    }
 }

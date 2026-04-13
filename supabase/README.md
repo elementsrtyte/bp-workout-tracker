@@ -1,12 +1,14 @@
 # Supabase backend (Blueprint Workout)
 
-Schema and auth config managed with the **Supabase CLI** (`migrations/`, `config.toml`). **Bundled catalog + reference progress** are loaded by migration `20260412210000_seed_bundled_catalog_and_progress.sql`, generated from the same JSON the iOS app ships (`workout_programs.json`, `progress_data.json`).
+Schema and auth config managed with the **Supabase CLI** (`migrations/`, `config.toml`). **Bundled catalog + reference progress** are loaded by migration `20260412210000_seed_bundled_catalog_and_progress.sql`, generated from repo JSON under `bp-workout/Resources/` (`workout_programs.json`, `progress_data.json`). The iOS app reads the **catalog** from Supabase (PostgREST) and caches it under Application Support; those JSON files remain the source for migrations and `generate_seed.py`, not a runtime bundle load for programs.
 
 **Catalog:** `catalog_*` + `exercises` — normalized program graph. **`catalog_release.version`** is set to `1` on each seed for cache checks.
 
 **Bundled progress:** `bundled_progress_reference` — singleton `ProgressDataBundle` (same role as bundle `progress_data.json` for all clients).
 
 **Per-user progress (optional):** `user_progress_bundles` — requires a real `auth.users` id; not filled by the bundled-data migration.
+
+**AI / LLM:** OpenAI is **not** called from the iOS app. Run the **`api/`** service (see `api/README.md`); it validates the same Supabase JWT as the app (`SUPABASE_URL` + `SUPABASE_ANON_KEY` on the server).
 
 ## CLI workflow
 
@@ -46,7 +48,7 @@ After `supabase start`: Studio `http://127.0.0.1:54323`, Inbucket (auth emails) 
 | Table | Purpose |
 |--------|---------|
 | `profiles` | One row per `auth.users`; `settings`, `hub_state` JSON. |
-| `workouts` / `workout_exercises` / `workout_sets` | Logged sessions (+ optional client UUIDs). |
+| `workouts` / `workout_exercises` / `workout_sets` | Logged sessions (+ optional client UUIDs). `workouts.program_id` and `workout_exercises.prescribed_name` capture program context and session substitutions for sync/history. |
 | `saved_programs` | User programs / overrides (`payload` JSON). |
 | `program_library_entries` | Program ids enabled in profile picker. |
 | `exercises` | Canonical exercises (`name_key` unique). |
@@ -56,7 +58,7 @@ After `supabase start`: Studio `http://127.0.0.1:54323`, Inbucket (auth emails) 
 | `user_progress_bundles` | Per-user `ProgressDataBundle` in `payload` (optional). |
 | `bundled_progress_reference` | Singleton: same `ProgressDataBundle` as app `progress_data.json` (migration). |
 
-App calls PostgREST with the user JWT; **anon** can read catalog + bundled progress per RLS. Service role is for admin automation only (never ship in the app).
+The iOS app creates a **device-scoped user** (GoTrue email+password stored in Keychain) so `workouts` inserts satisfy RLS (`auth.uid() = user_id`). After each save it **POSTs** the workout tree to `workouts` → `workout_exercises` → `workout_sets` (including `prescribed_name`). **Anon** can still read catalog + bundled progress per RLS. Service role is for admin automation only (never ship in the app).
 
 ## Regenerate bundled-data migration
 
@@ -84,7 +86,7 @@ where name_key = 'leg press';
 
 ## On-device vs cloud
 
-- **Device:** cache of catalog; bundled `workout_programs.json` / `progress_data.json` as bootstrap/offline.
+- **Device:** Application Support cache of catalog from API; `progress_data.json` still bundled for reference progress UI until migrated.
 - **Cloud:** `catalog_*`, `exercises`, `bundled_progress_reference`, `user_progress_bundles` (optional), `workouts`, `saved_programs`, library + profile fields.
 
 ## Forgot password

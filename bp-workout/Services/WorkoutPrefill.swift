@@ -46,13 +46,14 @@ enum WorkoutPrefill {
                     let name = pair.key
                     let entries = pair.value
                     let sorted = entries.sorted { $0.date < $1.date }
-                    let w = sorted.map(\.weight)
+                    let stats = sorted.filter { $0.substitutedPerformedAs == nil }
+                    let w = stats.map(\.weight)
                     return ExerciseProgress(
                         name: name,
-                        sessionCount: sorted.count,
+                        sessionCount: stats.count,
                         peakWeight: w.max() ?? 0,
-                        firstWeight: sorted.first?.weight ?? 0,
-                        lastWeight: sorted.last?.weight ?? 0,
+                        firstWeight: stats.first?.weight ?? 0,
+                        lastWeight: stats.last?.weight ?? 0,
                         entries: sorted
                     )
                 }
@@ -89,14 +90,17 @@ enum WorkoutPrefill {
         if let last = lastSessionSet(for: key, workouts: loggedWorkouts) {
             return Suggestion(weight: last.weight, reps: last.reps, prHint: prHint, planDisplay: planDisplay)
         }
-        if let p = progress, let last = p.entries.last {
-            let w: Double
-            if p.peakWeight > 0, isWeightPRStale(p) {
-                w = bumpedTargetWeight(peak: p.peakWeight, exerciseName: exerciseName)
-            } else {
-                w = last.weight
+        if let p = progress {
+            let trend = p.entries.filter { $0.substitutedPerformedAs == nil }
+            if let last = trend.last {
+                let w: Double
+                if p.peakWeight > 0, isWeightPRStale(p) {
+                    w = bumpedTargetWeight(peak: p.peakWeight, exerciseName: exerciseName)
+                } else {
+                    w = last.weight
+                }
+                return Suggestion(weight: w, reps: last.reps, prHint: prHint, planDisplay: planDisplay)
             }
-            return Suggestion(weight: w, reps: last.reps, prHint: prHint, planDisplay: planDisplay)
         }
         let tpl = parseTemplate(templateMax)
         var w = tpl.weight
@@ -151,7 +155,9 @@ enum WorkoutPrefill {
     private static func repsAtPeakWeight(_ p: ExerciseProgress) -> Int? {
         guard p.peakWeight > 0 else { return nil }
         let peak = p.peakWeight
-        let atPeak = p.entries.filter { abs($0.weight - peak) < 0.01 }
+        let atPeak = p.entries.filter {
+            $0.substitutedPerformedAs == nil && abs($0.weight - peak) < 0.01
+        }
         guard !atPeak.isEmpty else { return nil }
         return atPeak.map(\.reps).max()
     }
@@ -178,7 +184,9 @@ enum WorkoutPrefill {
 
     private static func isWeightPRStale(_ progress: ExerciseProgress) -> Bool {
         guard progress.peakWeight > 0 else { return false }
-        let chronological = progress.entries.sorted { $0.date < $1.date }
+        let chronological = progress.entries
+            .filter { $0.substitutedPerformedAs == nil }
+            .sorted { $0.date < $1.date }
         guard let lastPRDay = lastWeightPRDate(from: chronological) else { return true }
         return calendarDaysSince(lastPRDay) >= prStaleCalendarDays
     }
