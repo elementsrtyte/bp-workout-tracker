@@ -11,10 +11,8 @@ struct WorkoutHubView: View {
     @ObservedObject private var bundleData = BundleDataStore.shared
 
     @State private var showProgramTargets = false
-    @State private var editorTemplate: LogWorkoutTemplate?
     @State private var showIncompleteSaveConfirm = false
     @State private var exerciseHistoryItem: ExerciseHistorySheetItem?
-    @State private var showBlankWorkoutEditor = false
 
     var body: some View {
         ScrollView {
@@ -30,40 +28,8 @@ struct WorkoutHubView: View {
         .background(BlueprintTheme.bg)
         .navigationTitle(viewModel.activeDay?.label ?? "Workout")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                if let p = viewModel.activeProgram, let day = viewModel.activeDay {
-                    Menu {
-                        Button("Open detailed editor") {
-                            editorTemplate = LogWorkoutTemplate(programName: p.name, dayLabel: day.label)
-                        }
-                        Button("New blank workout") {
-                            showBlankWorkoutEditor = true
-                        }
-                        Button("Log from program…") {
-                            editorTemplate = LogWorkoutTemplate(programName: nil, dayLabel: nil)
-                        }
-                        Button("Discard in-progress session", role: .destructive) {
-                            viewModel.discardSession()
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                }
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             finishSessionBar
-        }
-        .sheet(item: $editorTemplate) { tpl in
-            NavigationStack {
-                LogWorkoutEditorView(template: tpl)
-            }
-        }
-        .sheet(isPresented: $showBlankWorkoutEditor) {
-            NavigationStack {
-                LogWorkoutEditorView(template: nil)
-            }
         }
         .sheet(item: $exerciseHistoryItem) { item in
             NavigationStack {
@@ -140,7 +106,7 @@ struct WorkoutHubView: View {
                             get: { viewModel.activeProgramId },
                             set: { viewModel.selectProgram(id: $0) }
                         ),
-                        options: viewModel.programs.map { ($0.id, programMenuLabel($0)) }
+                        options: viewModel.programs.map { ($0.id, $0.name) }
                     )
                     .padding(.horizontal, 20)
 
@@ -195,9 +161,22 @@ struct WorkoutHubView: View {
                                 .padding(.horizontal, 20)
                                 .padding(.top, 4)
 
-                            ForEach(viewModel.exerciseRows) { row in
-                                QuickLogExerciseCard(row: row, viewModel: viewModel) {
-                                    exerciseHistoryItem = ExerciseHistorySheetItem(name: row.name)
+                            ForEach(quickLogSegments(rows: viewModel.exerciseRows)) { segment in
+                                switch segment {
+                                case .single(let row):
+                                    QuickLogExerciseCard(
+                                        row: row,
+                                        viewModel: viewModel,
+                                        chrome: .standalone,
+                                        onHistory: { exerciseHistoryItem = ExerciseHistorySheetItem(name: row.name) }
+                                    )
+                                case .supersetBlock(let group, let rows):
+                                    SupersetQuickLogBlock(
+                                        group: group,
+                                        rows: rows,
+                                        viewModel: viewModel,
+                                        onHistory: { exerciseHistoryItem = ExerciseHistorySheetItem(name: $0) }
+                                    )
                                 }
                             }
                             .padding(.horizontal, 12)
@@ -218,11 +197,6 @@ struct WorkoutHubView: View {
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Menu rows: name + subtitle when present so switching programs stays a deliberate, rare action.
-    private func programMenuLabel(_ program: WorkoutProgram) -> String {
-        program.subtitle.isEmpty ? program.name : "\(program.name) · \(program.subtitle)"
     }
 
     @ViewBuilder
@@ -279,15 +253,125 @@ struct WorkoutHubView: View {
     }
 }
 
+// MARK: - Quick log segments (superset runs)
+
+private enum QuickLogSegment: Identifiable {
+    case single(QuickExerciseState)
+    case supersetBlock(group: Int, rows: [QuickExerciseState])
+
+    var id: String {
+        switch self {
+        case .single(let r): return r.id
+        case .supersetBlock(_, let rows): return rows.map(\.id).joined(separator: "|")
+        }
+    }
+}
+
+private func quickLogSegments(rows: [QuickExerciseState]) -> [QuickLogSegment] {
+    var out: [QuickLogSegment] = []
+    var i = 0
+    while i < rows.count {
+        let r = rows[i]
+        guard let g = r.supersetGroup else {
+            out.append(.single(r))
+            i += 1
+            continue
+        }
+        var run: [QuickExerciseState] = [r]
+        var j = i + 1
+        while j < rows.count, rows[j].supersetGroup == g {
+            run.append(rows[j])
+            j += 1
+        }
+        if run.count > 1 {
+            out.append(.supersetBlock(group: g, rows: run))
+        } else {
+            out.append(.single(r))
+        }
+        i = j
+    }
+    return out
+}
+
+// MARK: - Superset quick log block
+
+private struct SupersetQuickLogBlock: View {
+    let group: Int
+    let rows: [QuickExerciseState]
+    @ObservedObject var viewModel: WorkoutHubViewModel
+    var onHistory: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("Superset")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(BlueprintTheme.amber)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(BlueprintTheme.amber.opacity(0.22))
+                    .clipShape(Capsule())
+                Text("Group \(group)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(BlueprintTheme.mutedLight)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(BlueprintTheme.amber.opacity(0.08))
+
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(BlueprintTheme.amber.opacity(0.85))
+                    .frame(width: 4)
+                    .padding(.leading, 6)
+                    .padding(.vertical, 10)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
+                        QuickLogExerciseCard(
+                            row: row,
+                            viewModel: viewModel,
+                            chrome: .supersetGroupedRow,
+                            onHistory: { onHistory(row.name) }
+                        )
+                        if i < rows.count - 1 {
+                            Divider()
+                                .background(BlueprintTheme.amber.opacity(0.25))
+                                .padding(.leading, 18)
+                        }
+                    }
+                }
+                .padding(.leading, 18)
+            }
+        }
+        .background(BlueprintTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(BlueprintTheme.amber.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
 // MARK: - Quick log row
+
+private enum QuickLogCardChrome: Equatable {
+    /// Normal card with border; optional lone “Superset” pill when `row.supersetGroup != nil`.
+    case standalone
+    /// Row inside `SupersetQuickLogBlock` (shared chrome; no per-row border).
+    case supersetGroupedRow
+}
 
 private struct QuickLogExerciseCard: View {
     let row: QuickExerciseState
     @ObservedObject var viewModel: WorkoutHubViewModel
+    var chrome: QuickLogCardChrome = .standalone
     var onHistory: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let inner = VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
                 Rectangle()
                     .fill(BlueprintTheme.mint)
@@ -300,13 +384,13 @@ private struct QuickLogExerciseCard: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(BlueprintTheme.cream)
                             .fixedSize(horizontal: false, vertical: true)
-                        if let g = row.supersetGroup {
-                            Text("SS \(g)")
+                        if chrome == .standalone, row.supersetGroup != nil {
+                            Text("Superset")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(BlueprintTheme.amber)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(BlueprintTheme.amber.opacity(0.18))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(BlueprintTheme.amber.opacity(0.2))
                                 .clipShape(Capsule())
                         }
                         if row.isAmrap {
@@ -407,13 +491,22 @@ private struct QuickLogExerciseCard: View {
                 FlowSetChips(sets: row.loggedSets, targetSets: row.targetSets)
             }
         }
-        .padding(12)
-        .background(BlueprintTheme.card)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(BlueprintTheme.border, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+        switch chrome {
+        case .standalone:
+            inner
+                .padding(12)
+                .background(BlueprintTheme.card)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(BlueprintTheme.border, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        case .supersetGroupedRow:
+            inner
+                .padding(.horizontal, 10)
+                .padding(.vertical, 12)
+        }
     }
 
     private var weightLabel: String {
@@ -483,6 +576,44 @@ private struct FlowSetChips: View {
 
 // MARK: - Reference table
 
+private enum ExerciseTableSegment: Identifiable {
+    case single(Exercise)
+    case supersetBlock(group: Int, exercises: [Exercise])
+
+    var id: String {
+        switch self {
+        case .single(let e): return e.id
+        case .supersetBlock(_, let ex): return ex.map(\.id).joined(separator: "|")
+        }
+    }
+}
+
+private func exerciseTableSegments(exercises: [Exercise]) -> [ExerciseTableSegment] {
+    var out: [ExerciseTableSegment] = []
+    var i = 0
+    while i < exercises.count {
+        let e = exercises[i]
+        guard let g = e.supersetGroup else {
+            out.append(.single(e))
+            i += 1
+            continue
+        }
+        var run: [Exercise] = [e]
+        var j = i + 1
+        while j < exercises.count, exercises[j].supersetGroup == g {
+            run.append(exercises[j])
+            j += 1
+        }
+        if run.count > 1 {
+            out.append(.supersetBlock(group: g, exercises: run))
+        } else {
+            out.append(.single(e))
+        }
+        i = j
+    }
+    return out
+}
+
 private struct ExerciseTable: View {
     let day: WorkoutDay
 
@@ -505,80 +636,15 @@ private struct ExerciseTable: View {
             .padding(.vertical, 10)
             .background(BlueprintTheme.cardInner)
 
-            ForEach(day.exercises) { ex in
-                HStack(alignment: .top, spacing: 10) {
-                    HStack(alignment: .top, spacing: 8) {
-                        Rectangle()
-                            .fill(BlueprintTheme.mint)
-                            .frame(width: 6, height: 6)
-                            .clipShape(RoundedRectangle(cornerRadius: 2))
-                            .padding(.top, 4)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(ex.name)
-                                .font(.subheadline)
-                                .foregroundStyle(BlueprintTheme.cream)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if ex.supersetGroup != nil || ex.prescriptionIsAmrap || ex.prescriptionIsWarmup {
-                                HStack(spacing: 6) {
-                                    if let g = ex.supersetGroup {
-                                        Text("Superset \(g)")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(BlueprintTheme.amber)
-                                    }
-                                    if ex.prescriptionIsAmrap {
-                                        Text("AMRAP")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(BlueprintTheme.mint)
-                                    }
-                                    if ex.prescriptionIsWarmup {
-                                        Text("Warm-up")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(BlueprintTheme.mutedLight)
-                                    }
-                                }
-                            }
-                            if let note = ex.trimmedProgramNotes {
-                                Text(note)
-                                    .font(.caption2)
-                                    .foregroundStyle(BlueprintTheme.mutedLight)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .layoutPriority(0)
-
-                    Text("\(ex.prescribedSets)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(BlueprintTheme.mutedLight)
-                        .frame(width: 36, alignment: .trailing)
-
-                    Group {
-                        let plan = ex.maxWeight.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if plan.isEmpty {
-                            Text("—")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(BlueprintTheme.muted)
-                        } else {
-                            Text(plan)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(isBodyweight(plan) ? BlueprintTheme.muted : BlueprintTheme.lavender)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(planMaxChipBackground(ex.maxWeight))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.trailing)
-                    .layoutPriority(1)
-                    .fixedSize(horizontal: true, vertical: true)
+            ForEach(exerciseTableSegments(exercises: day.exercises)) { segment in
+                switch segment {
+                case .single(let ex):
+                    exerciseTableRow(ex: ex, supersetChrome: .standalone)
+                    Divider().background(BlueprintTheme.border)
+                case .supersetBlock(let group, let exercises):
+                    ExerciseTableSupersetBlock(group: group, exercises: exercises)
+                    Divider().background(BlueprintTheme.border)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(BlueprintTheme.card)
-                Divider().background(BlueprintTheme.border)
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -589,6 +655,91 @@ private struct ExerciseTable: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
+    private enum ExerciseRowSupersetChrome {
+        case standalone
+        case groupedRow
+    }
+
+    @ViewBuilder
+    private func exerciseTableRow(ex: Exercise, supersetChrome: ExerciseRowSupersetChrome) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Rectangle()
+                    .fill(BlueprintTheme.mint)
+                    .frame(width: 6, height: 6)
+                    .clipShape(RoundedRectangle(cornerRadius: 2))
+                    .padding(.top, 4)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(ex.name)
+                        .font(.subheadline)
+                        .foregroundStyle(BlueprintTheme.cream)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if supersetChrome == .standalone, ex.supersetGroup != nil {
+                        Text("Superset")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(BlueprintTheme.amber)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(BlueprintTheme.amber.opacity(0.2))
+                            .clipShape(Capsule())
+                    }
+                    if ex.prescriptionIsAmrap || ex.prescriptionIsWarmup {
+                        HStack(spacing: 6) {
+                            if ex.prescriptionIsAmrap {
+                                Text("AMRAP")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(BlueprintTheme.mint)
+                            }
+                            if ex.prescriptionIsWarmup {
+                                Text("Warm-up")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(BlueprintTheme.mutedLight)
+                            }
+                        }
+                    }
+                    if let note = ex.trimmedProgramNotes {
+                        Text(note)
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.mutedLight)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(0)
+
+            Text("\(ex.prescribedSets)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(BlueprintTheme.mutedLight)
+                .frame(width: 36, alignment: .trailing)
+
+            Group {
+                let plan = ex.maxWeight.trimmingCharacters(in: .whitespacesAndNewlines)
+                if plan.isEmpty {
+                    Text("—")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(BlueprintTheme.muted)
+                } else {
+                    Text(plan)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isBodyweight(plan) ? BlueprintTheme.muted : BlueprintTheme.lavender)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(planMaxChipBackground(ex.maxWeight))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .lineLimit(2)
+            .multilineTextAlignment(.trailing)
+            .layoutPriority(1)
+            .fixedSize(horizontal: true, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(BlueprintTheme.card)
+    }
+
     private func isBodyweight(_ s: String) -> Bool {
         s.lowercased().contains("bodyweight")
     }
@@ -596,6 +747,140 @@ private struct ExerciseTable: View {
     private func planMaxChipBackground(_ raw: String) -> Color {
         let plan = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if plan.isEmpty || isBodyweight(plan) {
+            return Color.white.opacity(0.05)
+        }
+        return BlueprintTheme.purple.opacity(0.12)
+    }
+}
+
+private struct ExerciseTableSupersetBlock: View {
+    let group: Int
+    let exercises: [Exercise]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("Superset")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(BlueprintTheme.amber)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(BlueprintTheme.amber.opacity(0.22))
+                    .clipShape(Capsule())
+                Text("Group \(group)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(BlueprintTheme.mutedLight)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(BlueprintTheme.amber.opacity(0.08))
+
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(BlueprintTheme.amber.opacity(0.85))
+                    .frame(width: 4)
+                    .padding(.leading, 6)
+                    .padding(.vertical, 8)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(exercises.enumerated()), id: \.element.id) { i, ex in
+                        ExerciseTableSupersetBlockRow(ex: ex)
+                        if i < exercises.count - 1 {
+                            Divider()
+                                .background(BlueprintTheme.amber.opacity(0.25))
+                                .padding(.leading, 18)
+                        }
+                    }
+                }
+                .padding(.leading, 18)
+            }
+        }
+        .background(BlueprintTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(BlueprintTheme.amber.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
+private struct ExerciseTableSupersetBlockRow: View {
+    let ex: Exercise
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Rectangle()
+                    .fill(BlueprintTheme.mint)
+                    .frame(width: 6, height: 6)
+                    .clipShape(RoundedRectangle(cornerRadius: 2))
+                    .padding(.top, 4)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(ex.name)
+                        .font(.subheadline)
+                        .foregroundStyle(BlueprintTheme.cream)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if ex.prescriptionIsAmrap || ex.prescriptionIsWarmup {
+                        HStack(spacing: 6) {
+                            if ex.prescriptionIsAmrap {
+                                Text("AMRAP")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(BlueprintTheme.mint)
+                            }
+                            if ex.prescriptionIsWarmup {
+                                Text("Warm-up")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(BlueprintTheme.mutedLight)
+                            }
+                        }
+                    }
+                    if let note = ex.trimmedProgramNotes {
+                        Text(note)
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.mutedLight)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(0)
+
+            Text("\(ex.prescribedSets)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(BlueprintTheme.mutedLight)
+                .frame(width: 36, alignment: .trailing)
+
+            Group {
+                let plan = ex.maxWeight.trimmingCharacters(in: .whitespacesAndNewlines)
+                if plan.isEmpty {
+                    Text("—")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(BlueprintTheme.muted)
+                } else {
+                    Text(plan)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(plan.lowercased().contains("bodyweight") ? BlueprintTheme.muted : BlueprintTheme.lavender)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(planMaxChipBackground(ex.maxWeight))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .lineLimit(2)
+            .multilineTextAlignment(.trailing)
+            .layoutPriority(1)
+            .fixedSize(horizontal: true, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+    }
+
+    private func planMaxChipBackground(_ raw: String) -> Color {
+        let plan = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if plan.isEmpty || plan.lowercased().contains("bodyweight") {
             return Color.white.opacity(0.05)
         }
         return BlueprintTheme.purple.opacity(0.12)

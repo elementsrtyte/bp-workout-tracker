@@ -215,11 +215,6 @@ final class WorkoutHubViewModel: ObservableObject {
         persistDraft()
     }
 
-    func discardSession() {
-        clearDraft()
-        rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
-    }
-
     func finishAndSave(modelContext: ModelContext) {
         guard let p = activeProgram, let day = activeDay else { return }
         let rows = exerciseRows.filter { !$0.loggedSets.isEmpty }

@@ -1,17 +1,19 @@
 # Supabase backend (Blueprint Workout)
 
-Schema and auth config managed with the **Supabase CLI** only (`migrations/`, `config.toml`, `seed.sql`). No separate Node/npm toolchain in this repo.
+Schema and auth config managed with the **Supabase CLI** (`migrations/`, `config.toml`). **Bundled catalog + reference progress** are loaded by migration `20260412210000_seed_bundled_catalog_and_progress.sql`, generated from the same JSON the iOS app ships (`workout_programs.json`, `progress_data.json`).
 
-**Catalog:** Tables `catalog_*` + `exercises` hold the normalized program graph (import strategy is up to you: SQL migrations, `db query`, or app-driven upserts). Clients should **cache** by `catalog_release.version` for snappy autocomplete.
+**Catalog:** `catalog_*` + `exercises` — normalized program graph. **`catalog_release.version`** is set to `1` on each seed for cache checks.
 
-**Progress bundle:** Table `user_progress_bundles` stores optional per-user `ProgressDataBundle` JSON (`payload`). Seed after the auth user exists.
+**Bundled progress:** `bundled_progress_reference` — singleton `ProgressDataBundle` (same role as bundle `progress_data.json` for all clients).
+
+**Per-user progress (optional):** `user_progress_bundles` — requires a real `auth.users` id; not filled by the bundled-data migration.
 
 ## CLI workflow
 
 ```bash
 # Local (Docker). If port 54322 is in use, stop other stacks or change [db].port in config.toml.
 supabase start
-supabase db reset          # migrations + seed.sql
+supabase db reset          # migrations (includes bundled catalog + progress)
 
 # New change
 supabase migration new describe_change
@@ -19,9 +21,9 @@ supabase migration new describe_change
 supabase db reset          # re-apply locally
 
 # Hosted
-supabase login
-supabase link --project-ref <ref>
-supabase db push
+# supabase login
+# supabase link --project-ref <ref>
+# supabase db push
 ```
 
 **Run ad-hoc SQL** (local default, or target linked project):
@@ -52,32 +54,25 @@ After `supabase start`: Studio `http://127.0.0.1:54323`, Inbucket (auth emails) 
 | `catalog_release` | Singleton `version` for cache invalidation. |
 | `programs_including_exercise` | View for “programs that include exercise X”. |
 | `user_progress_bundles` | Per-user `ProgressDataBundle` in `payload` (optional). |
+| `bundled_progress_reference` | Singleton: same `ProgressDataBundle` as app `progress_data.json` (migration). |
 
-App calls PostgREST with the user JWT; **anon** can read catalog tables per RLS. Service role is for admin automation only (never ship in the app).
+App calls PostgREST with the user JWT; **anon** can read catalog + bundled progress per RLS. Service role is for admin automation only (never ship in the app).
 
-## Loading catalog or `progress_data` (CLI-oriented)
+## Regenerate bundled-data migration
 
-- **Small / repeatable seeds:** add SQL to `seed.sql` or a dedicated migration.
-- **Large JSON:** generate a `.sql` file locally (your own one-off tool) that `INSERT`s or `upsert`s rows, then run:
+After editing `bp-workout/Resources/workout_programs.json` or `progress_data.json`:
 
-  `supabase db query --local -f ./generated.sql`  
-  or `--linked` against production when ready.
+```bash
+python3 supabase/scripts/generate_seed.py
+```
 
-- **`user_progress_bundles` for `neil@blueprintapps.io`:** create the user first (Auth). Then run SQL with their UUID, e.g.:
+This overwrites `migrations/20260412210000_seed_bundled_catalog_and_progress.sql`. Use **`supabase db reset`** locally. For **hosted** DBs that already applied this migration, do **not** change that file’s contents after deploy; add a **new** migration (new timestamp) for the next catalog bump, or run a one-off SQL script.
 
-  ```sql
-  insert into public.user_progress_bundles (user_id, payload)
-  values (
-    '<auth-user-uuid>'::uuid,
-    '<valid ProgressDataBundle json>'::jsonb
-  )
-  on conflict (user_id) do update
-    set payload = excluded.payload,
-        imported_at = now(),
-        updated_at = now();
-  ```
+`[db.seed]` is off by default; `seed.sql` is only a stub if you turn seeding back on for extra fixtures.
 
-  For very large JSON, keep the payload in a file and use `psql` `\copy` / `\i` with the DB connection string from `supabase status` (see Supabase docs for local Postgres URL), or split into a migration you generate once.
+## Per-user `user_progress_bundles` (not in bundled migration)
+
+Create the user in Auth, then insert with their UUID and a `ProgressDataBundle` JSON payload (same shape as `progress_data.json`).
 
 ## Example query
 
@@ -90,7 +85,7 @@ where name_key = 'leg press';
 ## On-device vs cloud
 
 - **Device:** cache of catalog; bundled `workout_programs.json` / `progress_data.json` as bootstrap/offline.
-- **Cloud:** `catalog_*`, `exercises`, `user_progress_bundles`, `workouts`, `saved_programs`, library + profile fields.
+- **Cloud:** `catalog_*`, `exercises`, `bundled_progress_reference`, `user_progress_bundles` (optional), `workouts`, `saved_programs`, library + profile fields.
 
 ## Forgot password
 
@@ -100,4 +95,5 @@ Configure **Site URL** and **Redirect URLs** in the hosted dashboard to match `c
 
 - `migrations/` — versioned SQL.
 - `config.toml` — local stack; mirror important auth URL settings in the dashboard for hosted.
-- `seed.sql` — optional dev seed (runs on `db reset`).
+- `seed.sql` — stub only; seeding disabled in `config.toml` unless you add fixtures.
+- `scripts/generate_seed.py` — regenerates `migrations/20260412210000_seed_bundled_catalog_and_progress.sql` from `bp-workout/Resources/*.json`.
