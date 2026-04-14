@@ -1,0 +1,29 @@
+name: bp_workout_flutter
+description: >
+  Blueprint Workout — Flutter iOS client using the existing bp-workout API
+  (Express). Mirrors the native app tabs and theme; features are filled in incrementally.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^2.5.1
+  dio: ^5.7.0
+  flutter_secure_storage: ^9.2.2
+  path: ^1.9.0
+  path_provider: ^2.1.4
+  sqflite: ^2.3.3+2
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

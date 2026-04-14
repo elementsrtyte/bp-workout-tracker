@@ -1,0 +1,26 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+flutter_*.png
+linked_*.ds
+unlinked.ds
+unlinked_spec.ds
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# iOS
+**/Pods/
+**/DerivedData/
+*.xcuserstate
+
+# Secrets / local
+*.env
+*.env.local
