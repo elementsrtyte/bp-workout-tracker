@@ -1,6 +1,14 @@
 import { HttpError } from "../lib/http-error.js";
 import { restJson, supabaseAnonKey } from "../integrations/supabase.js";
 
+type CatalogCategoryRow = {
+  slug: string;
+  title: string;
+  subtitle: string;
+  sort_order: number;
+  icon_sf_symbol: string;
+};
+
 type CatalogProgramRow = {
   id: string;
   name: string;
@@ -9,6 +17,7 @@ type CatalogProgramRow = {
   date_range: string;
   color: string;
   is_user_created: boolean;
+  category_slug: string | null;
 };
 
 type CatalogProgramDayRow = {
@@ -59,6 +68,16 @@ type WorkoutProgram = {
   days: WorkoutDay[];
   color: string;
   isUserCreated: boolean | null;
+  categorySlug: string | null;
+  categoryTitle: string | null;
+};
+
+type CatalogCategory = {
+  slug: string;
+  title: string;
+  subtitle: string;
+  sortOrder: number;
+  iconSfSymbol: string;
 };
 
 type ProgramStats = {
@@ -71,14 +90,20 @@ type ProgramStats = {
 export type WorkoutProgramsBundle = {
   programs: WorkoutProgram[];
   stats: ProgramStats;
+  categories: CatalogCategory[];
 };
 
 /** Public catalog via PostgREST + anon JWT (same access the app used client-side). */
 export async function fetchWorkoutProgramsBundle(): Promise<WorkoutProgramsBundle> {
   const anon = supabaseAnonKey();
 
-  const [programs, days, lines, exercises] = await Promise.all([
-    restJson<CatalogProgramRow[]>("catalog_programs", anon, ""),
+   const [categoryRows, programs, days, lines, exercises] = await Promise.all([
+    restJson<CatalogCategoryRow[]>("catalog_categories", anon, "order=sort_order.asc"),
+    restJson<CatalogProgramRow[]>(
+      "catalog_programs",
+      anon,
+      "listing_status=eq.live&order=id.asc"
+    ),
     restJson<CatalogProgramDayRow[]>(
       "catalog_program_days",
       anon,
@@ -91,6 +116,15 @@ export async function fetchWorkoutProgramsBundle(): Promise<WorkoutProgramsBundl
     ),
     restJson<ExerciseRow[]>("exercises", anon, "select=id,name"),
   ]);
+
+  const categories: CatalogCategory[] = categoryRows.map((c) => ({
+    slug: c.slug,
+    title: c.title,
+    subtitle: c.subtitle,
+    sortOrder: c.sort_order,
+    iconSfSymbol: c.icon_sf_symbol,
+  }));
+  const categoryTitleBySlug = new Map(categories.map((c) => [c.slug, c.title] as const));
 
   const exById = new Map(exercises.map((e) => [e.id, e] as const));
   const linesByDay = new Map<string, CatalogDayExerciseRow[]>();
@@ -134,6 +168,8 @@ export async function fetchWorkoutProgramsBundle(): Promise<WorkoutProgramsBundl
       }
       workoutDays.push({ label: d.label, exercises: exs });
     }
+    const slug = p.category_slug?.trim() || null;
+    const catTitle = slug ? categoryTitleBySlug.get(slug) ?? null : null;
     workoutPrograms.push({
       id: p.id,
       name: p.name,
@@ -143,6 +179,8 @@ export async function fetchWorkoutProgramsBundle(): Promise<WorkoutProgramsBundl
       days: workoutDays,
       color: p.color,
       isUserCreated: p.is_user_created ? true : null,
+      categorySlug: slug,
+      categoryTitle: catTitle,
     });
   }
 
@@ -155,5 +193,6 @@ export async function fetchWorkoutProgramsBundle(): Promise<WorkoutProgramsBundl
       totalWorkoutDays: totalDays,
       dateRange: "",
     },
+    categories,
   };
 }
