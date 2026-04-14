@@ -55,9 +55,21 @@ struct WorkoutProgram: Codable, Hashable, Identifiable {
     let days: [WorkoutDay]
     let color: String
     let isUserCreated: Bool?
+    /// Populated for server catalog programs with a marketplace category.
+    let categorySlug: String?
+    let categoryTitle: String?
 
     /// Marketplace accent when the program editor does not expose a custom color.
     static let defaultAccentHex = "#66bfcc"
+}
+
+struct CatalogCategory: Codable, Hashable, Identifiable {
+    var id: String { slug }
+    let slug: String
+    let title: String
+    let subtitle: String
+    let sortOrder: Int
+    let iconSfSymbol: String
 }
 
 struct ProgramStats: Codable, Hashable {
@@ -70,4 +82,31 @@ struct ProgramStats: Codable, Hashable {
 struct WorkoutProgramsBundle: Codable {
     let programs: [WorkoutProgram]
     let stats: ProgramStats
+    let categories: [CatalogCategory]
+
+    enum CodingKeys: String, CodingKey {
+        case programs
+        case stats
+        case categories
+    }
+
+    init(programs: [WorkoutProgram], stats: ProgramStats, categories: [CatalogCategory]) {
+        self.programs = programs
+        self.stats = stats
+        self.categories = categories
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        programs = try c.decode([WorkoutProgram].self, forKey: .programs)
+        stats = try c.decode(ProgramStats.self, forKey: .stats)
+        categories = try c.decodeIfPresent([CatalogCategory].self, forKey: .categories) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(programs, forKey: .programs)
+        try c.encode(stats, forKey: .stats)
+        try c.encode(categories, forKey: .categories)
+    }
 }

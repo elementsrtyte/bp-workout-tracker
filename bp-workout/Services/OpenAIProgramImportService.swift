@@ -215,7 +215,9 @@ enum OpenAIProgramImportService {
             dateRange: base.dateRange,
             days: [day],
             color: base.color,
-            isUserCreated: base.isUserCreated
+            isUserCreated: base.isUserCreated,
+            categorySlug: base.categorySlug,
+            categoryTitle: base.categoryTitle
         )
     }
 
@@ -265,7 +267,9 @@ enum OpenAIProgramImportService {
             dateRange: "",
             days: days,
             color: WorkoutProgram.defaultAccentHex,
-            isUserCreated: true
+            isUserCreated: true,
+            categorySlug: nil,
+            categoryTitle: nil
         )
     }
 }

@@ -33,6 +33,8 @@ final class ProgramEditorViewModel: ObservableObject {
     /// Shown only for bundled programs; kept when saving so catalog metadata is not wiped.
     private let catalogPeriod: String
     private let catalogDateRange: String
+    private let catalogCategorySlug: String?
+    private let catalogCategoryTitle: String?
 
     @Published var name: String
     @Published var subtitle: String
@@ -66,6 +68,8 @@ final class ProgramEditorViewModel: ObservableObject {
             accentHexForSave = WorkoutProgram.defaultAccentHex
             catalogPeriod = ""
             catalogDateRange = ""
+            catalogCategorySlug = nil
+            catalogCategoryTitle = nil
             name = ""
             subtitle = ""
             days = [
@@ -83,6 +87,8 @@ final class ProgramEditorViewModel: ObservableObject {
             accentHexForSave = Self.normalizedAccentHex(p.color)
             catalogPeriod = ""
             catalogDateRange = ""
+            catalogCategorySlug = p.categorySlug
+            catalogCategoryTitle = p.categoryTitle
             name = p.name
             subtitle = p.subtitle
             days = Self.daysFromProgram(p)
@@ -92,6 +98,8 @@ final class ProgramEditorViewModel: ObservableObject {
             accentHexForSave = Self.normalizedAccentHex(p.color)
             catalogPeriod = ""
             catalogDateRange = ""
+            catalogCategorySlug = p.categorySlug
+            catalogCategoryTitle = p.categoryTitle
             name = p.name
             subtitle = p.subtitle
             days = Self.daysFromProgram(p)
@@ -101,6 +109,8 @@ final class ProgramEditorViewModel: ObservableObject {
             accentHexForSave = Self.normalizedAccentHex(p.color)
             catalogPeriod = p.period
             catalogDateRange = p.dateRange
+            catalogCategorySlug = p.categorySlug
+            catalogCategoryTitle = p.categoryTitle
             name = p.name
             subtitle = p.subtitle
             days = Self.daysFromProgram(p)
@@ -195,7 +205,9 @@ final class ProgramEditorViewModel: ObservableObject {
             dateRange: dateRange,
             days: workoutDays,
             color: accentHexForSave,
-            isUserCreated: isUser
+            isUserCreated: isUser,
+            categorySlug: catalogCategorySlug,
+            categoryTitle: catalogCategoryTitle
         )
     }
 
@@ -418,6 +430,7 @@ struct ProgramEditorView: View {
     @StateObject private var vm: ProgramEditorViewModel
 
     @State private var showRevertConfirm = false
+    @State private var showSubmitForCatalogInfo = false
     @State private var isPublishingCatalog = false
     @State private var publishCatalogError: String?
     @State private var selectedDayIndex: Int = 0
@@ -435,6 +448,10 @@ struct ProgramEditorView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 programDetailsCard
+
+                if vm.mode == .editCustom {
+                    submitForCatalogCard
+                }
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Training days")
@@ -511,7 +528,45 @@ struct ProgramEditorView: View {
         } message: {
             Text(publishCatalogError ?? "")
         }
+        .alert("Submit for catalog review", isPresented: $showSubmitForCatalogInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                "We’ll add a submission flow so admins can approve community programs for the public marketplace. For now, your plan stays private on this device until that ships."
+            )
+        }
         .tint(BlueprintTheme.purple)
+    }
+
+    private var submitForCatalogCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Marketplace")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(BlueprintTheme.muted)
+            Text(
+                "Want this program listed for everyone? You’ll be able to submit it for review once the admin workflow is live."
+            )
+            .font(.caption)
+            .foregroundStyle(BlueprintTheme.mutedLight)
+            .fixedSize(horizontal: false, vertical: true)
+            Button {
+                showSubmitForCatalogInfo = true
+            } label: {
+                Label("Submit for catalog review", systemImage: "paperplane")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(BlueprintTheme.lavender)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(BlueprintTheme.card)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(BlueprintTheme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     /// Stable fingerprint when days are added/removed/reordered (ids change).
