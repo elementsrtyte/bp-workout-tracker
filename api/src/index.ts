@@ -1,4 +1,7 @@
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
+
+loadEnv();
+loadEnv({ path: ".env.local", override: true });
 
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";

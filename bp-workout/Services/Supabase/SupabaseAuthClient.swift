@@ -236,7 +236,7 @@ final class SupabaseSessionManager: ObservableObject {
         ]
         if let r = parsed.refreshToken { dict["refresh_token"] = r }
         let data = try JSONSerialization.data(withJSONObject: dict)
-        return try decodeSession(data)
+        return try SupabaseAuthSessionDecoding.decodeSession(data)
     }
 
     private static func parseAuthFragment(_ url: URL) -> ParsedFragment? {
@@ -325,7 +325,7 @@ final class SupabaseSessionManager: ObservableObject {
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, res) = try await URLSession.shared.data(for: req)
         try throwIfBadHTTP(res, data: data)
-        return try decodeSession(data)
+        return try SupabaseAuthSessionDecoding.decodeSession(data)
     }
 
     private func throwIfBadHTTP(_ res: URLResponse, data: Data) throws {
@@ -335,25 +335,21 @@ final class SupabaseSessionManager: ObservableObject {
         }
     }
 
-    private func decodeSession(_ data: Data) throws -> AuthSessionDTO {
-        let dec = JSONDecoder()
-        dec.keyDecodingStrategy = .convertFromSnakeCase
-        return try dec.decode(AuthSessionDTO.self, from: data)
-    }
-
     /// Sign-up may return a user without a session when email confirmation is required.
     private func decodeSessionOrSignupMessage(_ data: Data) throws -> AuthSessionDTO {
-        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            if let at = obj["access_token"] as? String, !at.isEmpty {
-                return try decodeSession(data)
+        if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let flat = (root["session"] as? [String: Any]) ?? root
+            if let at = flat["access_token"] as? String, !at.isEmpty {
+                return try SupabaseAuthSessionDecoding.decodeSession(data)
             }
-            if obj["user"] != nil {
-                let msg = (obj["msg"] as? String)
+            if flat["user"] != nil {
+                let msg = (flat["msg"] as? String)
+                    ?? (root["msg"] as? String)
                     ?? "Check your email to confirm your account, then sign in."
                 throw SupabaseAuthError.server(msg)
             }
         }
-        return try decodeSession(data)
+        return try SupabaseAuthSessionDecoding.decodeSession(data)
     }
 
     private func shouldInvalidateRefreshStorage(for error: Error) -> Bool {
@@ -407,15 +403,4 @@ private func parseGoTrueErrorMessage(_ data: Data) -> String? {
         return e.replacingOccurrences(of: "_", with: " ").capitalized
     }
     return nil
-}
-
-private struct AuthSessionDTO: Decodable {
-    let accessToken: String
-    let refreshToken: String?
-    let expiresIn: Int
-    let user: UserDTO?
-
-    struct UserDTO: Decodable {
-        let id: UUID
-    }
 }

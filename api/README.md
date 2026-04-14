@@ -8,11 +8,12 @@
 cd api
 cp .env.example .env
 # Set OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY (same anon key as the app).
+# Optional: put secrets in .env.local (gitignored); it overrides .env when present.
 npm install
 npm run dev
 ```
 
-`npm run dev` and `npm run start` both load **`api/.env`** automatically (via `dotenv`). Run commands from the **`api`** directory so the file is found. Variable names are **`SUPABASE_ANON_KEY`** (uppercase) unless you use the supported alias **`supabase_anon_key`**.
+`npm run dev` and `npm run start` load **`api/.env`** then **`api/.env.local`** (override). Run commands from the **`api`** directory so the files are found. Variable names are **`SUPABASE_ANON_KEY`** (uppercase) unless you use the supported alias **`supabase_anon_key`**.
 
 Default port **8787**. The iOS `MergedConfig-Info.plist` sets `BLUEPRINT_API_URL` to `http://127.0.0.1:8787` for local dev.
 

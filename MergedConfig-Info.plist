@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BLUEPRINT_API_URL</key>
+	<string>https://api-production-9c27.up.railway.app</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -21,10 +23,8 @@
 		<true/>
 	</dict>
 	<key>SUPABASE_ANON_KEY</key>
-	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0</string>
+	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndueW5maWJ0dHNlZWFnYXJkZndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMjA2MjQsImV4cCI6MjA5MTY5NjYyNH0.9Knbx7C6IaWnhTaVQzd331S-0fuUSguGrnAhU66b2l0</string>
 	<key>SUPABASE_URL</key>
-	<string>http://127.0.0.1:54321</string>
-	<key>BLUEPRINT_API_URL</key>
-	<string>http://127.0.0.1:8787</string>
+	<string>https://wnynfibttseeagardfwb.supabase.co</string>
 </dict>
 </plist>
