@@ -1,5 +1,5 @@
-import { HttpError } from "./httpError.js";
-import { restJson, supabaseAnonKey } from "./supabaseData.js";
+import { HttpError } from "../lib/http-error.js";
+import { restJson, supabaseAnonKey } from "../integrations/supabase.js";
 
 type CatalogProgramRow = {
   id: string;

@@ -16,6 +16,17 @@ final class SupabaseAuthSessionDecodingTests: XCTestCase {
         XCTAssertEqual(s.refreshToken, "rt")
         XCTAssertEqual(s.expiresIn, 3600)
         XCTAssertEqual(s.user?.id, sampleUserId)
+        XCTAssertNil(s.user?.email)
+    }
+
+    func testDecodeUserEmail() throws {
+        let data = try jsonData([
+            "access_token": "at",
+            "expires_in": 3600,
+            "user": ["id": sampleUserId.uuidString, "email": "you@example.com"],
+        ])
+        let s = try SupabaseAuthSessionDecoding.decodeSession(data)
+        XCTAssertEqual(s.user?.email, "you@example.com")
     }
 
     func testDecodeNestedSessionObject() throws {

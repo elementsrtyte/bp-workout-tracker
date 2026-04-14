@@ -46,7 +46,7 @@ enum OpenAIRelatedCatalogExerciseClient {
         let token = try await SupabaseSessionManager.shared.accessTokenForAPI()
         let body = RelatedRequest(exerciseName: ex, allowedExactNames: allowed, limit: min(12, max(1, limit)))
         let data = try await BlueprintAPIClient.post(
-            path: "/v1/ai/related-exercises",
+            path: "/v1/exercises/related",
             body: body,
             accessToken: token
         )

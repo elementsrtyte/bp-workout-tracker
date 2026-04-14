@@ -27,6 +27,27 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .tint(BlueprintTheme.purple)
+        .overlay(alignment: .top) {
+            if bundle.isRefreshingCatalog {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .tint(BlueprintTheme.lavender)
+                    Text("Syncing programs…")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(BlueprintTheme.cream)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(BlueprintTheme.card.opacity(0.95))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(BlueprintTheme.border, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.top, 8)
+                .allowsHitTesting(false)
+            }
+        }
         .task {
             await SupabaseSessionManager.shared.ensureSession()
             await bundle.refreshCatalogFromServer()

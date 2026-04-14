@@ -1,4 +1,4 @@
-import { HttpError } from "./httpError.js";
+import { HttpError } from "../lib/http-error.js";
 
 export async function fetchSupabaseAuthUser(
   authorization: string | undefined

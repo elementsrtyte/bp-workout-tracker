@@ -2,6 +2,20 @@
 
 **Express** (Node.js) server for **server-side OpenAI**, **workout catalog**, and **workout sync to Postgres**. The iOS app sends the user’s **Supabase access token** on protected routes (`Authorization: Bearer …`); the server verifies it with Supabase Auth. Public catalog reads use the server’s **anon** key against PostgREST so the app does not call `rest/v1` directly.
 
+Versioned resources live under **`/v1`**. **`GET /v1`** returns a small JSON map of available routes.
+
+## Project layout (`api/src`)
+
+| Path | Role |
+|------|------|
+| `index.ts` | Process entry: load env, `createApp()`, listen |
+| `app.ts` | Express app: CORS, JSON body, `/health`, `/v1`, global error handler |
+| `lib/` | Shared primitives (`http-error`) |
+| `middleware/` | `auth`, `error-handler`, `program-import-body` (multer + text fallback) |
+| `integrations/` | Supabase Auth + PostgREST clients |
+| `services/` | Domain logic: `workout-catalog`, `workout-sync`, `catalog-publish`, `openai` (LLM + program import) |
+| `routes/v1/` | HTTP adapters: `meta`, `*.routes.ts`, `index.ts` mounts sub-routers |
+
 ## Setup
 
 ```bash
@@ -19,16 +33,26 @@ Default port **8787**. The iOS `MergedConfig-Info.plist` sets `BLUEPRINT_API_URL
 
 ## Endpoints
 
-- `GET /health`
-- `GET /v1/catalog/workout-programs` — public JSON matching the app's `WorkoutProgramsBundle` (programs + stats)
-- `POST /v1/sync/workout` — JSON body: logged workout tree (`id`, ISO8601 `date`, optional program fields, `exercises[]` with `sets[]`). Requires a valid Supabase session bearer token; the server forwards writes to PostgREST as that user (same RLS as the old client).
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | — | Liveness |
+| `GET` | `/v1` | — | API metadata and route map |
+| `GET` | `/v1/catalog/programs` | — | Public JSON: `WorkoutProgramsBundle` (programs + stats) |
+| `POST` | `/v1/workouts` | Bearer | Upsert logged workout (`id`, ISO8601 `date`, optional program fields, `exercises[]` / `sets[]`). **204** on success. |
+| `POST` | `/v1/exercises/substitution-suggestions` | Bearer | JSON: `{ prescribedExercise, userNote? }` → `{ suggestions: string[] }` |
+| `POST` | `/v1/exercises/related` | Bearer | JSON: `{ exerciseName, allowedExactNames, limit? }` → `{ related: string[] }` |
+| `POST` | `/v1/imports/programs` | Bearer | AI program import (one of three bodies below) |
+| `POST` | `/v1/admin/catalog/programs` | Bearer | Admin: publish/replace one catalog program graph (`services/catalog-publish.ts`) |
 
-- `POST /v1/ai/substitution-suggestions` — JSON: `{ prescribedExercise, userNote? }`
-- `POST /v1/ai/import-program` — JSON: `{ text }` — paste-style import
-- `POST /v1/ai/import-program/raw` — **body is the workout only**, UTF-8; use `Content-Type: text/plain` (or any non-JSON type). Same LLM step as above.
-- `POST /v1/ai/import-program/upload` — `multipart/form-data` with field **`file`** (plain text, max 2MB)
+### `POST /v1/imports/programs`
 
-**Import responses** (all three routes above) return JSON:
+Same path; choose representation:
+
+1. **JSON:** `Content-Type: application/json`, body `{ "text": "…" }` (paste-style).
+2. **Plain text:** `Content-Type: text/plain; charset=utf-8` — body is the workout text only.
+3. **Multipart:** `multipart/form-data`, field **`file`** (plain text, max 2MB).
+
+**Response** (all three):
 
 ```json
 {
@@ -37,16 +61,15 @@ Default port **8787**. The iOS `MergedConfig-Info.plist` sets `BLUEPRINT_API_URL
 }
 ```
 
-`historicalWorkouts` is an array of dated sessions with exercises and sets (for the app log) when the model finds parseable history; otherwise `[]`. The model is instructed to ignore noise (email footers, unrelated chat) and cap long histories (~200 sessions).
-- `POST /v1/ai/related-exercises` — JSON: `{ exerciseName, allowedExactNames, limit? }`
+`historicalWorkouts` is dated sessions when the model finds parseable history; otherwise `[]`.
 
-All `/v1/ai/*` and `POST /v1/sync/workout` routes require a valid Supabase session bearer token.
+Protected routes (`/v1/workouts`, `/v1/exercises/*`, `/v1/imports/*`, `/v1/admin/*`) require a valid Supabase session bearer token.
 
 ### Example: import from a text file (curl)
 
 ```bash
 export TOKEN="<supabase_access_jwt>"
-curl -sS -X POST "http://127.0.0.1:8787/v1/ai/import-program/raw" \
+curl -sS -X POST "http://127.0.0.1:8787/v1/imports/programs" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: text/plain; charset=utf-8" \
   --data-binary @./my-program.txt
@@ -55,7 +78,7 @@ curl -sS -X POST "http://127.0.0.1:8787/v1/ai/import-program/raw" \
 Multipart:
 
 ```bash
-curl -sS -X POST "http://127.0.0.1:8787/v1/ai/import-program/upload" \
+curl -sS -X POST "http://127.0.0.1:8787/v1/imports/programs" \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@./my-program.txt"
 ```

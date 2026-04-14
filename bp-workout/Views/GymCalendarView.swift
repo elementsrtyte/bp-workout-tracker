@@ -255,29 +255,37 @@ struct GymCalendarView: View {
                     .foregroundStyle(BlueprintTheme.muted)
             } else {
                 ForEach(workoutsForSelectedDay) { w in
-                    HStack(alignment: .top, spacing: 10) {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(BlueprintTheme.mint)
-                            .frame(width: 4)
-                            .padding(.vertical, 2)
+                    NavigationLink {
+                        LoggedWorkoutDetailView(workout: w)
+                    } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(BlueprintTheme.mint)
+                                .frame(width: 4)
+                                .padding(.vertical, 2)
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(w.listSubtitle)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(BlueprintTheme.cream)
-                            Text(timeString(w.date))
-                                .font(.caption2.monospacedDigit())
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(w.listSubtitle)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(BlueprintTheme.cream)
+                                Text(timeString(w.date))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(BlueprintTheme.muted)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(BlueprintTheme.muted)
                         }
-                        Spacer(minLength: 0)
+                        .padding(12)
+                        .background(BlueprintTheme.cardInner)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(BlueprintTheme.border, lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .padding(12)
-                    .background(BlueprintTheme.cardInner)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(BlueprintTheme.border, lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .buttonStyle(.plain)
                 }
             }
         }

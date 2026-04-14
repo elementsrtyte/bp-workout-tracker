@@ -52,7 +52,8 @@ final class LogWorkoutEditorViewModel: ObservableObject {
                 loggedWorkouts: loggedWorkouts,
                 progressBundle: progress,
                 prescriptionIsAmrap: ex.prescriptionIsAmrap,
-                prescriptionIsWarmup: ex.prescriptionIsWarmup
+                prescriptionIsWarmup: ex.prescriptionIsWarmup,
+                templateTargetReps: ex.prescribedRepTarget
             )
             let wStr = sug.weight == 0 ? "0" : WorkoutPrefill.formatWeight(sug.weight)
             let rStr = "\(sug.reps)"

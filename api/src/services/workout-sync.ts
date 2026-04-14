@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
-import { HttpError } from "./httpError.js";
-import { fetchSupabaseAuthUser, restFetch } from "./supabaseData.js";
+import { HttpError } from "../lib/http-error.js";
+import { fetchSupabaseAuthUser, restFetch } from "../integrations/supabase.js";
 
 type SyncSet = {
   id: string;

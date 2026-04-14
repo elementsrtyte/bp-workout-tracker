@@ -21,6 +21,8 @@ final class SupabaseSessionManager: ObservableObject {
     @Published private(set) var phase: AuthPhase = .checking
     /// After opening a recovery deep link, user must set a new password before using the app.
     @Published private(set) var awaitingPasswordResetCompletion = false
+    /// Email for the active session when known (user object, JWT, or last sign-in prefill).
+    @Published private(set) var signedInEmail: String?
 
     private let legacyDeviceEmailKey = "supabase.device.email"
     private let kRefresh = "refresh_token"
@@ -37,6 +39,7 @@ final class SupabaseSessionManager: ObservableObject {
     func bootstrap() async {
         phase = .checking
         awaitingPasswordResetCompletion = false
+        signedInEmail = nil
         guard SupabaseConfig.isConfigured else {
             phase = .signedOut
             return
@@ -103,6 +106,7 @@ final class SupabaseSessionManager: ObservableObject {
         accessToken = nil
         accessExpires = nil
         userId = nil
+        signedInEmail = nil
         awaitingPasswordResetCompletion = false
         phase = .signedOut
     }
@@ -205,21 +209,42 @@ final class SupabaseSessionManager: ObservableObject {
         accessToken = s.accessToken
         accessExpires = Date().addingTimeInterval(TimeInterval(s.expiresIn - 60))
         userId = s.user?.id ?? Self.uuidFromJwtSub(s.accessToken)
+        signedInEmail = Self.resolvedEmail(from: s)
         if let r = s.refreshToken, !r.isEmpty {
             KeychainStore.set(Data(r.utf8), account: kRefresh)
         }
     }
 
-    private static func uuidFromJwtSub(_ jwt: String) -> UUID? {
+    private static func resolvedEmail(from session: AuthSessionDTO) -> String? {
+        let trimmedUser = session.user?.email?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedUser, !trimmedUser.isEmpty { return trimmedUser }
+        if let e = emailFromJwt(session.accessToken) { return e }
+        let saved = UserDefaults.standard.string(forKey: savedEmailKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let saved, !saved.isEmpty { return saved }
+        return nil
+    }
+
+    private static func jwtPayload(_ jwt: String) -> [String: Any]? {
         let parts = jwt.split(separator: ".")
         guard parts.count >= 2 else { return nil }
         var b64 = String(parts[1])
         while b64.count % 4 != 0 { b64.append("=") }
+        b64 = b64.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
         guard let data = Data(base64Encoded: b64),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let sub = obj["sub"] as? String
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
+        return obj
+    }
+
+    private static func uuidFromJwtSub(_ jwt: String) -> UUID? {
+        guard let obj = jwtPayload(jwt), let sub = obj["sub"] as? String else { return nil }
         return UUID(uuidString: sub)
+    }
+
+    private static func emailFromJwt(_ jwt: String) -> String? {
+        guard let obj = jwtPayload(jwt), let e = obj["email"] as? String else { return nil }
+        let t = e.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
     }
 
     private struct ParsedFragment {

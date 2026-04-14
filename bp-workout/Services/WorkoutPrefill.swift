@@ -36,7 +36,8 @@ enum WorkoutPrefill {
         loggedWorkouts: [LoggedWorkout],
         progressBundle: ProgressDataBundle?,
         prescriptionIsAmrap: Bool = false,
-        prescriptionIsWarmup: Bool = false
+        prescriptionIsWarmup: Bool = false,
+        templateTargetReps: Int? = nil
     ) -> Suggestion {
         let key = ExerciseNameNormalizer.key(exerciseName)
         let userEntries = LoggedWorkoutProgressExport.entriesByExerciseName(workouts: loggedWorkouts)
@@ -110,6 +111,9 @@ enum WorkoutPrefill {
             if let peakR = repsAtPeakWeight(p), peakR > 0 {
                 r = peakR
             }
+        }
+        if let tr = templateTargetReps, !prescriptionIsAmrap {
+            r = max(1, min(100, tr))
         }
         return Suggestion(weight: w, reps: r, prHint: prHint, planDisplay: planDisplay)
     }

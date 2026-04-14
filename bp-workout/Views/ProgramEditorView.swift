@@ -49,6 +49,8 @@ final class ProgramEditorViewModel: ObservableObject {
         var name: String
         var maxWeight: String
         var targetSets: Int
+        /// Reps per working set (ignored when AMRAP is on).
+        var targetReps: Int
         /// Same number groups exercises into a superset; nil = not in a superset.
         var supersetGroup: Int?
         var isAmrap: Bool
@@ -71,7 +73,7 @@ final class ProgramEditorViewModel: ObservableObject {
                     id: UUID(),
                     label: "Day 1",
                     exercises: [
-                        EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: ""),
+                        EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, targetReps: 8, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: ""),
                     ]
                 ),
             ]
@@ -122,6 +124,7 @@ final class ProgramEditorViewModel: ObservableObject {
                         name: ex.name,
                         maxWeight: ex.maxWeight,
                         targetSets: ex.targetSets ?? 3,
+                        targetReps: ex.prescribedRepTarget ?? 8,
                         supersetGroup: ex.supersetGroup,
                         isAmrap: ex.prescriptionIsAmrap,
                         isWarmup: ex.prescriptionIsWarmup,
@@ -135,7 +138,7 @@ final class ProgramEditorViewModel: ObservableObject {
                 EditableDay(
                     id: UUID(),
                     label: "Day 1",
-                    exercises: [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: "")],
+                    exercises: [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, targetReps: 8, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: "")],
                 ),
             ]
         }
@@ -163,10 +166,12 @@ final class ProgramEditorViewModel: ObservableObject {
                 guard !n.isEmpty else { return nil }
                 let ts = max(1, min(20, ex.targetSets))
                 let sg = ex.supersetGroup.flatMap { (1 ... 6).contains($0) ? $0 : nil }
+                let repT: Int? = ex.isAmrap ? nil : max(1, min(100, ex.targetReps))
                 return Exercise(
                     name: n,
                     maxWeight: ex.maxWeight.trimmingCharacters(in: .whitespacesAndNewlines),
                     targetSets: ts,
+                    targetReps: repT,
                     supersetGroup: sg,
                     isAmrap: ex.isAmrap ? true : nil,
                     isWarmup: ex.isWarmup ? true : nil,
@@ -201,7 +206,7 @@ final class ProgramEditorViewModel: ObservableObject {
             EditableDay(
                 id: UUID(),
                 label: "Day \(n)",
-                exercises: [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: "")],
+                exercises: [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, targetReps: 8, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: "")],
             )
         )
         days = copy
@@ -220,7 +225,7 @@ final class ProgramEditorViewModel: ObservableObject {
         guard days.indices.contains(dayIndex) else { return }
         var copy = days
         var d = copy[dayIndex]
-        d.exercises.append(EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: ""))
+        d.exercises.append(EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, targetReps: 8, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: ""))
         copy[dayIndex] = d
         days = copy
     }
@@ -231,7 +236,7 @@ final class ProgramEditorViewModel: ObservableObject {
         var d = copy[dayIndex]
         d.exercises.remove(atOffsets: offsets)
         if d.exercises.isEmpty {
-            d.exercises = [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: "")]
+            d.exercises = [EditableExercise(id: UUID(), name: "", maxWeight: "", targetSets: 3, targetReps: 8, supersetGroup: nil, isAmrap: false, isWarmup: false, notes: "")]
         }
         copy[dayIndex] = d
         days = copy
@@ -467,9 +472,11 @@ struct ProgramEditorView: View {
                     .foregroundStyle(BlueprintTheme.lavender)
             }
             ToolbarItem(placement: .confirmationAction) {
+                let saveEnabled = vm.canSave && !isPublishingCatalog
                 Button("Save") { save() }
-                    .disabled(!vm.canSave || isPublishingCatalog)
-                    .foregroundStyle(vm.canSave && !isPublishingCatalog ? BlueprintTheme.cream : BlueprintTheme.muted)
+                    .disabled(!saveEnabled)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(saveEnabled ? BlueprintTheme.cream : BlueprintTheme.muted.opacity(0.38))
             }
         }
         .onChange(of: vm.days.count) { _, _ in
@@ -658,6 +665,7 @@ struct ProgramEditorView: View {
         if let g = ex.supersetGroup {
             parts.append("Superset \(g)")
         }
+        if !ex.isAmrap { parts.append("\(ex.targetReps) reps") }
         if ex.isAmrap { parts.append("AMRAP") }
         if ex.isWarmup { parts.append("Warm-up") }
         if !ex.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -728,6 +736,30 @@ struct ProgramEditorView: View {
                 .tint(BlueprintTheme.lavender)
             }
             .padding(.horizontal, 4)
+
+            HStack {
+                Text("Reps / set")
+                    .font(.subheadline)
+                    .foregroundStyle(BlueprintTheme.mutedLight)
+                Spacer()
+                Stepper(
+                    value: exerciseTargetRepsBinding(dayIndex: dayIndex, exIndex: exIndex),
+                    in: 1 ... 30
+                ) {
+                    Text("\(vm.days[dayIndex].exercises[exIndex].targetReps)")
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(BlueprintTheme.cream)
+                        .frame(minWidth: 24, alignment: .trailing)
+                }
+                .tint(BlueprintTheme.lavender)
+                .disabled(vm.days[dayIndex].exercises[exIndex].isAmrap)
+            }
+            .padding(.horizontal, 4)
+            if vm.days[dayIndex].exercises[exIndex].isAmrap {
+                Text("Rep target is hidden for AMRAP (reps to failure).")
+                    .font(.caption2)
+                    .foregroundStyle(BlueprintTheme.muted)
+            }
 
             ProgramExerciseAdvancedOptionsSection(
                 summarySubtitle: exerciseAdvancedOptionsSummary(vm.days[dayIndex].exercises[exIndex]),
@@ -1018,6 +1050,25 @@ struct ProgramEditorView: View {
         )
     }
 
+    private func exerciseTargetRepsBinding(dayIndex: Int, exIndex: Int) -> Binding<Int> {
+        Binding(
+            get: {
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return 8 }
+                return vm.days[dayIndex].exercises[exIndex].targetReps
+            },
+            set: { new in
+                guard exerciseIndicesAreValid(dayIndex: dayIndex, exIndex: exIndex) else { return }
+                var copy = vm.days
+                var d = copy[dayIndex]
+                var e = d.exercises[exIndex]
+                e.targetReps = max(1, min(30, new))
+                d.exercises[exIndex] = e
+                copy[dayIndex] = d
+                vm.days = copy
+            }
+        )
+    }
+
     private func exerciseSupersetGroupBinding(dayIndex: Int, exIndex: Int) -> Binding<Int?> {
         Binding(
             get: {
@@ -1114,7 +1165,7 @@ struct ProgramEditorView: View {
                     do {
                         let token = try await auth.accessTokenForAPI()
                         _ = try await BlueprintAPIClient.post(
-                            path: "/v1/admin/publish-catalog-program",
+                            path: "/v1/admin/catalog/programs",
                             body: program,
                             accessToken: token
                         )

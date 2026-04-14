@@ -8,6 +8,8 @@ final class AppSettings: ObservableObject {
     @Published var filterAnomalies: Bool
     @Published var anomalySensitivity: AnomalySensitivity
     @Published var minReps: Int
+    /// Countdown between sets on the Workout tab (local notification when backgrounded).
+    @Published var restBetweenSetsSeconds: Int
     /// When on, bundled programs can be edited from the Programs tab (stored as local overrides).
     @Published var programAdminMode: Bool
 
@@ -17,11 +19,13 @@ final class AppSettings: ObservableObject {
             filterAnomalies = decoded.filterAnomalies
             anomalySensitivity = decoded.anomalySensitivity
             minReps = decoded.minReps
+            restBetweenSetsSeconds = decoded.restBetweenSetsSeconds ?? 90
             programAdminMode = decoded.programAdminMode ?? false
         } else {
             filterAnomalies = true
             anomalySensitivity = .medium
             minReps = 5
+            restBetweenSetsSeconds = 90
             programAdminMode = false
         }
     }
@@ -30,6 +34,7 @@ final class AppSettings: ObservableObject {
         var filterAnomalies: Bool
         var anomalySensitivity: AnomalySensitivity
         var minReps: Int
+        var restBetweenSetsSeconds: Int?
         var programAdminMode: Bool?
     }
 
@@ -38,6 +43,7 @@ final class AppSettings: ObservableObject {
             filterAnomalies: filterAnomalies,
             anomalySensitivity: anomalySensitivity,
             minReps: minReps,
+            restBetweenSetsSeconds: restBetweenSetsSeconds,
             programAdminMode: programAdminMode
         )
         if let data = try? JSONEncoder().encode(p) {
@@ -49,6 +55,7 @@ final class AppSettings: ObservableObject {
         filterAnomalies = true
         anomalySensitivity = .medium
         minReps = 5
+        restBetweenSetsSeconds = 90
         programAdminMode = false
         persist()
     }

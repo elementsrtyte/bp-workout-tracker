@@ -11,10 +11,28 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Account") {
-                    Button("Sign out", role: .destructive) {
-                        auth.signOut()
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(auth.signedInEmail ?? "—")
+                            .font(.subheadline)
+                            .foregroundStyle(BlueprintTheme.cream)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 8)
+                        Button("Sign out", role: .destructive) {
+                            auth.signOut()
+                        }
                     }
                     Text("Workout sync uses your Supabase account. Sign out on shared devices.")
+                        .font(.caption)
+                        .foregroundStyle(BlueprintTheme.mutedLight)
+                }
+
+                Section("Workout logging") {
+                    Stepper(value: $appSettings.restBetweenSetsSeconds, in: 30 ... 300, step: 15) {
+                        Text("Rest between sets: \(appSettings.restBetweenSetsSeconds)s")
+                            .foregroundStyle(BlueprintTheme.cream)
+                    }
+                    Text("After you log a set, a countdown runs before the next one. You get a notification if the app is in the background when rest ends.")
                         .font(.caption)
                         .foregroundStyle(BlueprintTheme.mutedLight)
                 }
@@ -82,6 +100,7 @@ struct SettingsView: View {
         .onChange(of: appSettings.filterAnomalies) { _, _ in appSettings.persist() }
         .onChange(of: appSettings.anomalySensitivity) { _, _ in appSettings.persist() }
         .onChange(of: appSettings.minReps) { _, _ in appSettings.persist() }
+        .onChange(of: appSettings.restBetweenSetsSeconds) { _, _ in appSettings.persist() }
         .onChange(of: appSettings.programAdminMode) { _, _ in appSettings.persist() }
         .onAppear { viewModel.onAppear() }
     }

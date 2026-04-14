@@ -66,7 +66,7 @@ enum BlueprintWorkoutSyncClient {
         )
 
         do {
-            _ = try await BlueprintAPIClient.post(path: "/v1/sync/workout", body: body, accessToken: token)
+            _ = try await BlueprintAPIClient.post(path: "/v1/workouts", body: body, accessToken: token)
         } catch {
             // Non-fatal: local SwiftData row remains source of truth until sync succeeds.
         }

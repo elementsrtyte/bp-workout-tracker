@@ -23,7 +23,7 @@ enum BlueprintCatalogFetcher {
         }
         let data: Data
         do {
-            data = try await BlueprintAPIClient.get(path: "/v1/catalog/workout-programs")
+            data = try await BlueprintAPIClient.get(path: "/v1/catalog/programs")
         } catch let e as BlueprintAPIError {
             switch e {
             case .notConfigured: throw FetchError.notConfigured

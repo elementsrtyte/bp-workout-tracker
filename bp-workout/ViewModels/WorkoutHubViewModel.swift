@@ -2,6 +2,12 @@ import Combine
 import Foundation
 import SwiftData
 
+enum LogSetOutcome: Equatable {
+    case noop
+    case loggedSetContinuing
+    case finishedExercise
+}
+
 struct LoggedSetSnapshot: Equatable {
     var weight: Double
     var reps: Int
@@ -31,6 +37,8 @@ struct QuickExerciseState: Identifiable, Equatable {
     let isWarmup: Bool
     /// Program author notes (optional).
     let programNotes: String?
+    /// Fixed rep target from program (nil for AMRAP or unspecified).
+    let prescribedTargetReps: Int?
 
     var setsRemaining: Int { max(0, targetSets - loggedSets.count) }
     var isSetsComplete: Bool { loggedSets.count >= targetSets }
@@ -42,9 +50,16 @@ final class WorkoutHubViewModel: ObservableObject {
     @Published var activeProgramId: String = ""
     @Published var dayIndex: Int = 0
     @Published private(set) var exerciseRows: [QuickExerciseState] = []
+    /// Wall-clock start for the current in-progress session (persisted with draft).
+    @Published private(set) var sessionWallClockStart: Date?
+    /// Seconds remaining for rest between sets; nil when idle.
+    @Published private(set) var restSecondsRemaining: Int?
 
     private let bundle: BundleDataStore
     private var lastLoggedSnapshot: [LoggedWorkout] = []
+    private var restCountdownTask: Task<Void, Never>?
+    /// Rest duration after logging a set when more sets remain (from Settings).
+    var restBetweenSetsSeconds: Int = 90
 
     private enum DefaultsKey {
         static let programId = "workoutHub.activeProgramId"
@@ -58,6 +73,7 @@ final class WorkoutHubViewModel: ObservableObject {
     }
 
     private struct PersistedDraft: Codable, Equatable {
+        var sessionStartedAt: Date?
         struct Line: Codable, Equatable {
             var sortOrder: Int
             /// Display / logging name (may be a session substitute).
@@ -114,9 +130,40 @@ final class WorkoutHubViewModel: ObservableObject {
             var weight: Double
             var reps: Int
         }
+
         var programId: String
         var dayLabel: String
         var lines: [Line]
+
+        enum CodingKeys: String, CodingKey {
+            case sessionStartedAt
+            case programId
+            case dayLabel
+            case lines
+        }
+
+        init(programId: String, dayLabel: String, sessionStartedAt: Date?, lines: [Line]) {
+            self.programId = programId
+            self.dayLabel = dayLabel
+            self.sessionStartedAt = sessionStartedAt
+            self.lines = lines
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            programId = try c.decode(String.self, forKey: .programId)
+            dayLabel = try c.decode(String.self, forKey: .dayLabel)
+            sessionStartedAt = try c.decodeIfPresent(Date.self, forKey: .sessionStartedAt)
+            lines = try c.decode([Line].self, forKey: .lines)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(programId, forKey: .programId)
+            try c.encode(dayLabel, forKey: .dayLabel)
+            try c.encodeIfPresent(sessionStartedAt, forKey: .sessionStartedAt)
+            try c.encode(lines, forKey: .lines)
+        }
     }
 
     init(bundle: BundleDataStore = .shared) {
@@ -232,20 +279,70 @@ final class WorkoutHubViewModel: ObservableObject {
         persistDraft()
     }
 
+    /// Parses "185", "185.5", "BW", comma decimals; ignores incomplete input.
+    func setWorkingWeightFromString(for rowId: String, raw: String) {
+        guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        let lower = t.lowercased()
+        if lower == "bw" || lower == "bodyweight" {
+            exerciseRows[i].workingWeight = 0
+            persistDraft()
+            return
+        }
+        let norm = t.replacingOccurrences(of: ",", with: ".")
+        guard let v = Double(norm) else { return }
+        exerciseRows[i].workingWeight = max(0, (v * 4).rounded() / 4)
+        persistDraft()
+    }
+
     func nudgeReps(for rowId: String, delta: Int) {
         guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
         exerciseRows[i].workingReps = max(1, exerciseRows[i].workingReps + delta)
         persistDraft()
     }
 
-    func logSet(for rowId: String) {
-        guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
-        guard exerciseRows[i].loggedSets.count < exerciseRows[i].targetSets else { return }
+    func logSet(for rowId: String) -> LogSetOutcome {
+        guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return .noop }
+        guard exerciseRows[i].loggedSets.count < exerciseRows[i].targetSets else { return .noop }
         let w = exerciseRows[i].workingWeight
         let r = exerciseRows[i].workingReps
-        guard r > 0 else { return }
+        guard r > 0 else { return .noop }
         exerciseRows[i].loggedSets.append(LoggedSetSnapshot(weight: w, reps: r))
+        let nowComplete = exerciseRows[i].loggedSets.count >= exerciseRows[i].targetSets
         persistDraft()
+        if !nowComplete {
+            startRestBetweenSetsIfConfigured()
+            return .loggedSetContinuing
+        }
+        return .finishedExercise
+    }
+
+    func skipRestTimer() {
+        restCountdownTask?.cancel()
+        restCountdownTask = nil
+        restSecondsRemaining = nil
+        RestTimerNotificationScheduler.cancelScheduled()
+    }
+
+    private func startRestBetweenSetsIfConfigured() {
+        let sec = max(0, restBetweenSetsSeconds)
+        guard sec > 0 else { return }
+        skipRestTimer()
+        restSecondsRemaining = sec
+        RestTimerNotificationScheduler.scheduleRestComplete(after: TimeInterval(sec))
+        restCountdownTask = Task { @MainActor in
+            for remaining in stride(from: sec, through: 0, by: -1) {
+                if Task.isCancelled { return }
+                self.restSecondsRemaining = remaining
+                if remaining == 0 { break }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            if !Task.isCancelled {
+                self.restSecondsRemaining = nil
+                RestTimerNotificationScheduler.cancelScheduled()
+            }
+        }
     }
 
     func repeatLastSet(for rowId: String) {
@@ -255,7 +352,11 @@ final class WorkoutHubViewModel: ObservableObject {
         exerciseRows[i].workingWeight = last.weight
         exerciseRows[i].workingReps = last.reps
         exerciseRows[i].loggedSets.append(LoggedSetSnapshot(weight: last.weight, reps: last.reps))
+        let nowComplete = exerciseRows[i].loggedSets.count >= exerciseRows[i].targetSets
         persistDraft()
+        if !nowComplete {
+            startRestBetweenSetsIfConfigured()
+        }
     }
 
     func removeLastSet(for rowId: String) {
@@ -281,7 +382,8 @@ final class WorkoutHubViewModel: ObservableObject {
             loggedWorkouts: lastLoggedSnapshot,
             progressBundle: bundle.progressBundle,
             prescriptionIsAmrap: ex.prescriptionIsAmrap,
-            prescriptionIsWarmup: ex.prescriptionIsWarmup
+            prescriptionIsWarmup: ex.prescriptionIsWarmup,
+            templateTargetReps: ex.prescribedRepTarget
         )
         exerciseRows[i].name = trimmed
         exerciseRows[i].planDisplay = sug.planDisplay
@@ -305,7 +407,8 @@ final class WorkoutHubViewModel: ObservableObject {
             loggedWorkouts: lastLoggedSnapshot,
             progressBundle: bundle.progressBundle,
             prescriptionIsAmrap: ex.prescriptionIsAmrap,
-            prescriptionIsWarmup: ex.prescriptionIsWarmup
+            prescriptionIsWarmup: ex.prescriptionIsWarmup,
+            templateTargetReps: ex.prescribedRepTarget
         )
         exerciseRows[i].name = ex.name
         exerciseRows[i].planDisplay = sug.planDisplay
@@ -317,10 +420,11 @@ final class WorkoutHubViewModel: ObservableObject {
         persistDraft()
     }
 
-    func finishAndSave(modelContext: ModelContext) {
-        guard let p = activeProgram, let day = activeDay else { return }
+    @discardableResult
+    func finishAndSave(modelContext: ModelContext) -> Bool {
+        guard let p = activeProgram, let day = activeDay else { return false }
         let rows = exerciseRows.filter { !$0.loggedSets.isEmpty }
-        guard !rows.isEmpty else { return }
+        guard !rows.isEmpty else { return false }
 
         let workout = LoggedWorkout(
             date: .now,
@@ -346,6 +450,7 @@ final class WorkoutHubViewModel: ObservableObject {
         lastLoggedSnapshot = ([workout] + lastLoggedSnapshot).sorted { $0.date > $1.date }
         rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
         Task { await BlueprintWorkoutSyncClient.push(workout) }
+        return true
     }
 
     // MARK: - Private
@@ -374,9 +479,11 @@ final class WorkoutHubViewModel: ObservableObject {
     private func rebuildExerciseRows(usingLogged logged: [LoggedWorkout]) {
         guard let day = activeDay, let program = activeProgram else {
             exerciseRows = []
+            sessionWallClockStart = nil
             return
         }
         let bundleData = bundle.progressBundle
+        let persistedDraft = loadDraft()
         var rows: [QuickExerciseState] = []
         for (idx, ex) in day.exercises.enumerated() {
             let sug = WorkoutPrefill.suggest(
@@ -385,7 +492,8 @@ final class WorkoutHubViewModel: ObservableObject {
                 loggedWorkouts: logged,
                 progressBundle: bundleData,
                 prescriptionIsAmrap: ex.prescriptionIsAmrap,
-                prescriptionIsWarmup: ex.prescriptionIsWarmup
+                prescriptionIsWarmup: ex.prescriptionIsWarmup,
+                templateTargetReps: ex.prescribedRepTarget
             )
             let prescribed = ex.prescribedSets
             var state = QuickExerciseState(
@@ -401,9 +509,10 @@ final class WorkoutHubViewModel: ObservableObject {
                 supersetGroup: ex.supersetGroup,
                 isAmrap: ex.prescriptionIsAmrap,
                 isWarmup: ex.prescriptionIsWarmup,
-                programNotes: ex.trimmedProgramNotes
+                programNotes: ex.trimmedProgramNotes,
+                prescribedTargetReps: ex.prescribedRepTarget
             )
-            if let draft = loadDraft(), draft.programId == program.id, draft.dayLabel == day.label,
+            if let draft = persistedDraft, draft.programId == program.id, draft.dayLabel == day.label,
                let line = draft.lines.first(where: { $0.sortOrder == idx }) {
                 let draftName = line.exerciseName
                 state.name = draftName
@@ -414,7 +523,8 @@ final class WorkoutHubViewModel: ObservableObject {
                         loggedWorkouts: logged,
                         progressBundle: bundleData,
                         prescriptionIsAmrap: ex.prescriptionIsAmrap,
-                        prescriptionIsWarmup: ex.prescriptionIsWarmup
+                        prescriptionIsWarmup: ex.prescriptionIsWarmup,
+                        templateTargetReps: ex.prescribedRepTarget
                     )
                     state.planDisplay = subSug.planDisplay
                     state.prHint = subSug.prHint
@@ -427,6 +537,7 @@ final class WorkoutHubViewModel: ObservableObject {
             rows.append(state)
         }
         exerciseRows = rows
+        sessionWallClockStart = persistedDraft?.sessionStartedAt
     }
 
     private func loadDraft() -> PersistedDraft? {
@@ -436,6 +547,10 @@ final class WorkoutHubViewModel: ObservableObject {
 
     private func persistDraft() {
         guard let program = activeProgram, let day = activeDay else { return }
+        let hasSetsNow = exerciseRows.contains { !$0.loggedSets.isEmpty }
+        let previousStart = loadDraft()?.sessionStartedAt
+        let sessionStartedAt: Date? = hasSetsNow ? (previousStart ?? Date()) : nil
+        sessionWallClockStart = sessionStartedAt
         let lines: [PersistedDraft.Line] = exerciseRows.map { r in
             PersistedDraft.Line(
                 sortOrder: r.sortOrder,
@@ -446,7 +561,12 @@ final class WorkoutHubViewModel: ObservableObject {
                 sets: r.loggedSets.map { PersistedDraft.PersistedSet(weight: $0.weight, reps: $0.reps) }
             )
         }
-        let draft = PersistedDraft(programId: program.id, dayLabel: day.label, lines: lines)
+        let draft = PersistedDraft(
+            programId: program.id,
+            dayLabel: day.label,
+            sessionStartedAt: sessionStartedAt,
+            lines: lines
+        )
         if let data = try? JSONEncoder().encode(draft) {
             UserDefaults.standard.set(data, forKey: DefaultsKey.draft)
         }
@@ -454,6 +574,8 @@ final class WorkoutHubViewModel: ObservableObject {
 
     private func clearDraft() {
         UserDefaults.standard.removeObject(forKey: DefaultsKey.draft)
+        sessionWallClockStart = nil
+        skipRestTimer()
     }
 
     private func restoredDayIndex(forProgramId id: String) -> Int {

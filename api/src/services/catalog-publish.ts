@@ -1,11 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
 import { v5 as uuidv5 } from "uuid";
-import { HttpError } from "./httpError.js";
+import { HttpError } from "../lib/http-error.js";
 import {
   fetchSupabaseAuthUser,
   restFetchServiceRole,
   restJsonServiceRole,
-} from "./supabaseData.js";
+} from "../integrations/supabase.js";
 
 /** Must match `supabase/scripts/generate_seed.py` and iOS `ExerciseNameNormalizer`. */
 const UUID_NS = "6f2f1e3a-8c4d-5b6e-9f0a-1b2c3d4e5f60";

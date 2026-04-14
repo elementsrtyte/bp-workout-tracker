@@ -5,6 +5,7 @@ import SwiftUI
 struct ProgressTrackerView: View {
     @StateObject private var viewModel = ProgressTrackerViewModel()
     @EnvironmentObject private var appSettings: AppSettings
+    @ObservedObject private var bundle = BundleDataStore.shared
     @Query(sort: \LoggedWorkout.date, order: .reverse) private var loggedWorkouts: [LoggedWorkout]
 
     @State private var searchPresented = false
@@ -14,6 +15,19 @@ struct ProgressTrackerView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
+                    if bundle.progressBundle == nil {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .tint(BlueprintTheme.lavender)
+                            Text("Loading bundled progress data…")
+                                .font(.caption)
+                                .foregroundStyle(BlueprintTheme.mutedLight)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(BlueprintTheme.card.opacity(0.7))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
                     Text("Chart")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(BlueprintTheme.muted)

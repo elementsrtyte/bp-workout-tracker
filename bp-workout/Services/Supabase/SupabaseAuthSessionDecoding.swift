@@ -65,9 +65,11 @@ struct AuthSessionDTO: Decodable, Equatable {
 
     struct UserDTO: Decodable, Equatable {
         let id: UUID
+        let email: String?
 
         private enum CodingKeys: String, CodingKey {
             case id
+            case email
         }
 
         init(from decoder: Decoder) throws {
@@ -83,6 +85,7 @@ struct AuthSessionDTO: Decodable, Equatable {
                 )
                 throw DecodingError.dataCorrupted(ctx)
             }
+            email = try c.decodeIfPresent(String.self, forKey: .email)
         }
     }
 }

@@ -19,7 +19,8 @@ struct ImportProgramTextView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ZStack {
+                ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Paste exports, notes, or logs—even noisy text. The API builds your program template and pulls in dated workout history when it can (sets, reps, weights).")
                         .font(.caption)
@@ -76,9 +77,22 @@ struct ImportProgramTextView: View {
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(BlueprintTheme.bg)
+                .blueprintDismissKeyboardOnScroll()
+
+                if busy {
+                    Color.black.opacity(0.35)
+                        .ignoresSafeArea()
+                    ProgressView("Parsing…")
+                        .tint(BlueprintTheme.lavender)
+                        .foregroundStyle(BlueprintTheme.cream)
+                        .padding(24)
+                        .background(BlueprintTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
             }
             .background(BlueprintTheme.bg)
-            .blueprintDismissKeyboardOnScroll()
             .navigationTitle("Import from text")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

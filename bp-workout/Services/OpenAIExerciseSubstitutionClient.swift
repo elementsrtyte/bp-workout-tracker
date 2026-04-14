@@ -26,7 +26,7 @@ enum OpenAIExerciseSubstitutionClient {
             userNote: (trimmedNote?.isEmpty == false) ? trimmedNote : nil
         )
         let data = try await BlueprintAPIClient.post(
-            path: "/v1/ai/substitution-suggestions",
+            path: "/v1/exercises/substitution-suggestions",
             body: body,
             accessToken: token
         )

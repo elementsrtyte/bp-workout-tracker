@@ -57,7 +57,7 @@ enum BlueprintAPIClient {
         return data
     }
 
-    /// POST with UTF-8 plain body (e.g. `/v1/ai/import-program/raw`).
+    /// POST with UTF-8 plain body (e.g. `POST /v1/imports/programs` and `Content-Type: text/plain`).
     static func postPlainText(path: String, text: String, accessToken: String) async throws -> Data {
         guard let base = BlueprintAPIConfig.baseURL else { throw BlueprintAPIError.notConfigured }
         var baseStr = base.absoluteString

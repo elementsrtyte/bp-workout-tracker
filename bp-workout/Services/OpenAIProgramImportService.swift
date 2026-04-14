@@ -11,6 +11,7 @@ private struct LLMImportExercise: Codable {
     var name: String?
     var maxWeight: String?
     var targetSets: Int?
+    var targetReps: Int?
     var supersetGroup: Int?
     var isAmrap: Bool?
     var isWarmup: Bool?
@@ -94,7 +95,7 @@ enum OpenAIProgramImportService {
 
     private static let maxHistoricalSessions = 250
 
-    /// Parses free-form text via the Blueprint API (`POST /v1/ai/import-program` JSON body).
+    /// Parses free-form text via the Blueprint API (`POST /v1/imports/programs` with JSON `{ "text": "…" }`).
     static func importResult(fromPastedText text: String) async throws -> ProgramImportResult {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ImportError.emptyPaste }
@@ -102,14 +103,14 @@ enum OpenAIProgramImportService {
 
         let token = try await SupabaseSessionManager.shared.accessTokenForAPI()
         let data = try await BlueprintAPIClient.post(
-            path: "/v1/ai/import-program",
+            path: "/v1/imports/programs",
             body: ImportProgramRequest(text: trimmed),
             accessToken: token
         )
         return try decodeImportResponse(data)
     }
 
-    /// Plain-text body route (`POST /v1/ai/import-program/raw`).
+    /// Plain-text body (`Content-Type: text/plain`) on `POST /v1/imports/programs`.
     static func importResult(fromPlainTextBody text: String) async throws -> ProgramImportResult {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ImportError.emptyPaste }
@@ -117,7 +118,7 @@ enum OpenAIProgramImportService {
 
         let token = try await SupabaseSessionManager.shared.accessTokenForAPI()
         let data = try await BlueprintAPIClient.postPlainText(
-            path: "/v1/ai/import-program/raw",
+            path: "/v1/imports/programs",
             text: trimmed,
             accessToken: token
         )
@@ -195,6 +196,7 @@ enum OpenAIProgramImportService {
                 name: $0,
                 maxWeight: "",
                 targetSets: 3,
+                targetReps: nil,
                 supersetGroup: nil,
                 isAmrap: nil,
                 isWarmup: nil,
@@ -232,6 +234,7 @@ enum OpenAIProgramImportService {
                 guard !exName.isEmpty else { continue }
 
                 let sets = ex.targetSets.map { max(1, min(20, $0)) } ?? 3
+                let repT = ex.targetReps.map { max(1, min(100, $0)) }
                 let sg = ex.supersetGroup.flatMap { (1 ... 6).contains($0) ? $0 : nil }
                 let mw = ex.maxWeight?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let note = ex.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -240,6 +243,7 @@ enum OpenAIProgramImportService {
                         name: exName,
                         maxWeight: mw,
                         targetSets: sets,
+                        targetReps: ex.isAmrap == true ? nil : repT,
                         supersetGroup: sg,
                         isAmrap: ex.isAmrap == true ? true : nil,
                         isWarmup: ex.isWarmup == true ? true : nil,
