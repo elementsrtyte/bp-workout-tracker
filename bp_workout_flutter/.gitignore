@@ -21,6 +21,6 @@ unlinked_spec.ds
 **/DerivedData/
 *.xcuserstate
 
-# Secrets / local
-*.env
-*.env.local
+# Secrets / local (keep `.env.example` committed)
+.env
+.env.local

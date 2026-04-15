@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config/env.dart';
 import '../../data/catalog/catalog_repository.dart';
 import '../../data/models/workout_program_models.dart';
+import '../../providers/user_program_library.dart';
 import '../../theme/blueprint_colors.dart';
 
 /// Programs / marketplace — loads `GET /v1/catalog/programs` (full UI parity later).
@@ -51,13 +52,13 @@ class ProgramsScreen extends ConsumerWidget {
   }
 }
 
-class _CatalogList extends StatelessWidget {
+class _CatalogList extends ConsumerWidget {
   const _CatalogList({required this.bundle});
 
   final WorkoutProgramsBundle bundle;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final programs = bundle.programs;
     if (programs.isEmpty) {
       return const Center(
@@ -68,77 +69,128 @@ class _CatalogList extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: programs.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, i) {
-        final p = programs[i];
-        final days = p.days.length;
-        final perWeek = days == 0            ? 'No training days'
-            : days == 1
-                ? '1 day/week'
-                : '$days days/week';
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+    final catalogIds = programs.map((e) => e.id).toList();
+    final libVersion = ref.watch(userProgramLibraryProvider);
+    final lib = ref.read(userProgramLibraryProvider.notifier);
+
+    return FutureBuilder<Set<String>>(
+      key: ValueKey<int>(libVersion),
+      future: lib.idsInLibrary(catalogIds),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(
+            child: CircularProgressIndicator(color: BlueprintColors.lavender),
+          );
+        }
+        final inLib = snap.data!;
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: programs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, i) {
+            final p = programs[i];
+            final days = p.days.length;
+            final perWeek = days == 0
+                ? 'No training days'
+                : days == 1
+                    ? '1 day/week'
+                    : '$days days/week';
+            final member = inLib.contains(p.id);
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        p.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: BlueprintColors.cream,
-                        ),
-                      ),
-                    ),
-                    if (p.categoryTitle != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: BlueprintColors.lavender.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          p.categoryTitle!.toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: BlueprintColors.lavender,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            p.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: BlueprintColors.cream,
+                            ),
                           ),
                         ),
+                        if (p.categoryTitle != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color:
+                                  BlueprintColors.lavender.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              p.categoryTitle!.toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: BlueprintColors.lavender,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (p.subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        p.subtitle,
+                        style: const TextStyle(
+                          color: BlueprintColors.mutedLight,
+                          fontSize: 14,
+                        ),
                       ),
+                    ],
+                    const SizedBox(height: 8),
+                    Text(
+                      perWeek,
+                      style: const TextStyle(
+                        color: BlueprintColors.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: member
+                          ? OutlinedButton(
+                              onPressed: () async {
+                                await lib.setProgramInLibrary(
+                                  p.id,
+                                  false,
+                                  catalogIds,
+                                );
+                              },
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: BlueprintColors.muted,
+                              ),
+                              child: const Text('Remove from profile'),
+                            )
+                          : FilledButton(
+                              onPressed: () async {
+                                await lib.setProgramInLibrary(
+                                  p.id,
+                                  true,
+                                  catalogIds,
+                                );
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: BlueprintColors.purple,
+                              ),
+                              child: const Text('Add to profile'),
+                            ),
+                    ),
                   ],
                 ),
-                if (p.subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    p.subtitle,
-                    style: const TextStyle(
-                      color: BlueprintColors.mutedLight,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Text(
-                  perWeek,
-                  style: const TextStyle(
-                    color: BlueprintColors.muted,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );

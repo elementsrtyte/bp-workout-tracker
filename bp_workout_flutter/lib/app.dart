@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'features/shell/main_shell.dart';
+import 'features/auth/auth_shell.dart';
 import 'theme/blueprint_theme.dart';
 
 class BpWorkoutApp extends StatelessWidget {
@@ -12,7 +12,8 @@ class BpWorkoutApp extends StatelessWidget {
       title: 'Blueprint Workout',
       debugShowCheckedModeBanner: false,
       theme: buildBlueprintTheme(),
-      home: const MainShell(),
+      themeMode: ThemeMode.dark,
+      home: const AuthShell(),
     );
   }
 }

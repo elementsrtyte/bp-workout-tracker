@@ -31,33 +31,51 @@ If `ios/` already exists, you can instead run:
 flutter pub get
 ```
 
-## Configure API base URL
+## Configure API + Supabase (`.env.local`, like `api/`)
 
-**Option A — dart-define (good for dev):**
+**iOS/Android:** create **`bp_workout_flutter/.env.local`** (it is a **pubspec asset**, so it is packaged into the app). The simulator does not use your repo folder as the process working directory, so reading only `File('.env.local')` from disk does not work there.
+
+```bash
+cd bp_workout_flutter
+cp .env.example .env.local
+# Edit .env.local with SUPABASE_URL, SUPABASE_ANON_KEY, BLUEPRINT_API_URL
+flutter pub get
+```
+
+Optional **`.env`** on disk is merged before `.env.local` (useful on desktop or when the project path is found via `PWD` / monorepo layout).
+
+**Precedence (highest first):**
+
+1. `--dart-define=KEY=value` or `--dart-define-from-file=path/to.env` (best for CI / release)
+2. Exported shell environment variables
+3. **`.env`**, then **`.env.local`** from disk (search includes repo root + `bp_workout_flutter/`)
+4. Bundled **`.env.local`** on **iOS/Android** only
+5. **`.env.example`**
+
+You can run without env files by passing defines only:
 
 ```bash
 flutter run --dart-define=BLUEPRINT_API_URL=http://127.0.0.1:8787
 ```
 
-**Option B — `ios/Runner/Info.plist`:** add a string entry (same idea as the Swift `Info.plist`):
-
-```xml
-<key>BLUEPRINT_API_URL</key>
-<string>http://127.0.0.1:8787</string>
-```
-
-The app reads `BLUEPRINT_API_URL` from `dart-define` first, then `Platform.environment`, then (if you wire it) Info.plist via a small native channel — **currently** only dart-define + environment are implemented in Dart; for Release builds prefer `--dart-define` or a config package.
+**Security:** Do not put production secrets in **`.env.example`**. Treat **`.env.local`** like `api/.env.local`.
 
 ## Run
 
 ```bash
 flutter pub get
-flutter run -d ios --dart-define=BLUEPRINT_API_URL=https://your-api-host
+# Prefer a local .env (see above); or pass defines:
+flutter run -d "<simulator-id-or-name>" \
+  --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=your_anon_key \
+  --dart-define=BLUEPRINT_API_URL=https://your-api-host
 ```
+
+See **`PARITY.md`** for native vs Flutter feature checklist.
 
 ## Scope
 
-This is a **scaffold**: tab shell, Blueprint theme, catalog fetch + models, placeholder screens. Port screens and Supabase auth from `bp-workout` incrementally.
+Scaffold + auth gate + program library keys; full UI parity is tracked in `PARITY.md`.
 
 ## Related repo paths
 
