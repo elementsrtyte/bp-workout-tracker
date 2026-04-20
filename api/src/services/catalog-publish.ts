@@ -1,11 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { v5 as uuidv5 } from "uuid";
 import { HttpError } from "../lib/http-error.js";
-import {
-  fetchSupabaseAuthUser,
-  restFetchServiceRole,
-  restJsonServiceRole,
-} from "../integrations/supabase.js";
+import { restFetchServiceRole, restJsonServiceRole } from "../integrations/supabase.js";
 
 /** Must match `supabase/scripts/generate_seed.py` and iOS `ExerciseNameNormalizer`. */
 const UUID_NS = "6f2f1e3a-8c4d-5b6e-9f0a-1b2c3d4e5f60";
@@ -20,26 +16,6 @@ function exerciseIdFromKey(nameKey: string): string {
 
 function programDayId(programId: string, dayIndex: number): string {
   return uuidv5(`day:${programId}:${dayIndex}`, UUID_NS);
-}
-
-function catalogAdminAllowlist(): string[] {
-  const fromList =
-    process.env.CATALOG_ADMIN_EMAILS?.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) ??
-    [];
-  const one = process.env.CATALOG_ADMIN_EMAIL?.trim().toLowerCase();
-  const set = new Set(fromList);
-  if (one) set.add(one);
-  return [...set];
-}
-
-function assertCatalogAdmin(email: string | null): void {
-  const allow = catalogAdminAllowlist();
-  if (allow.length === 0) {
-    throw new HttpError(503, "Catalog admin is not configured (set CATALOG_ADMIN_EMAILS)");
-  }
-  if (!email || !allow.includes(email)) {
-    throw new HttpError(403, "Not authorized to publish catalog programs");
-  }
 }
 
 type InEx = {
@@ -185,7 +161,7 @@ function parseProgram(body: unknown): {
 
 /**
  * Dev-only: replace one catalog program graph in Supabase and bump `catalog_release.version`.
- * Caller must pass a valid Supabase user JWT; email must be in CATALOG_ADMIN_EMAILS.
+ * Caller must pass a valid Supabase user JWT; email must be in ADMIN_EMAILS / CATALOG_ADMIN_EMAILS (see admin router).
  */
 export async function postPublishCatalogProgram(
   req: Request,
@@ -193,10 +169,6 @@ export async function postPublishCatalogProgram(
   next: NextFunction
 ): Promise<void> {
   try {
-    const auth = req.header("authorization") ?? req.header("Authorization");
-    const user = await fetchSupabaseAuthUser(auth);
-    assertCatalogAdmin(user.email);
-
     const program = parseProgram(req.body);
 
     const existing = await restJsonServiceRole<{ id: string }[]>(

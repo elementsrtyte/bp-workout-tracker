@@ -11,9 +11,9 @@ Versioned resources live under **`/v1`**. **`GET /v1`** returns a small JSON map
 | `index.ts` | Process entry: load env, `createApp()`, listen |
 | `app.ts` | Express app: CORS, JSON body, `/health`, `/v1`, global error handler |
 | `lib/` | Shared primitives (`http-error`) |
-| `middleware/` | `auth`, `error-handler`, `program-import-body` (multer + text fallback) |
+| `middleware/` | `auth`, `platform-admin`, `error-handler`, `program-import-body` (multer + text fallback) |
 | `integrations/` | Supabase Auth + PostgREST clients |
-| `services/` | Domain logic: `workout-catalog`, `workout-sync`, `catalog-publish`, `openai` (LLM + program import) |
+| `services/` | Domain logic: `workout-catalog`, `workout-sync`, `catalog-publish`, `admin-seed-and-workouts`, `platform-admin`, `openai` (LLM + program import) |
 | `routes/v1/` | HTTP adapters: `meta`, `*.routes.ts`, `index.ts` mounts sub-routers |
 
 ## Setup
@@ -22,6 +22,7 @@ Versioned resources live under **`/v1`**. **`GET /v1`** returns a small JSON map
 cd api
 cp .env.example .env
 # Set OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY (same anon key as the app).
+# For `/v1/admin/*` (except where noted): SUPABASE_SERVICE_ROLE_KEY plus ADMIN_EMAILS and/or CATALOG_ADMIN_EMAILS (comma-separated).
 # Optional: put secrets in .env.local (gitignored); it overrides .env when present.
 npm install
 npm run dev
@@ -43,6 +44,29 @@ Default port **8787**. The iOS `MergedConfig-Info.plist` sets `BLUEPRINT_API_URL
 | `POST` | `/v1/exercises/related` | Bearer | JSON: `{ exerciseName, allowedExactNames, limit? }` → `{ related: string[] }` |
 | `POST` | `/v1/imports/programs` | Bearer | AI program import (one of three bodies below) |
 | `POST` | `/v1/admin/catalog/programs` | Bearer | Admin: publish/replace one catalog program graph (`services/catalog-publish.ts`) |
+| `DELETE` | `/v1/admin/catalog/programs/:programId` | Bearer | Admin: remove catalog program (cascades days/lines); bumps `catalog_release` |
+| `GET` | `/v1/admin/catalog/snapshot` | Bearer | Admin: `catalog_release`, exercise count, program id/name list |
+| `GET` | `/v1/admin/exercises` | Bearer | Admin: search `public.exercises` (`q`, `limit`) |
+| `GET` | `/v1/admin/bundled-progress` | Bearer | Admin: singleton `bundled_progress_reference` row |
+| `PATCH` | `/v1/admin/bundled-progress` | Bearer | Admin: `{ "payload": { ... } }` JSON |
+| `GET` | `/v1/admin/workouts` | Bearer | Admin: paginated workouts (`limit`, `offset`, `userId`, `email`, `programId`, `anomaly=1`, `unlinked=1`) |
+| `GET` | `/v1/admin/workouts/:id` | Bearer | Admin: workout + exercises + sets + profile |
+| `PATCH` | `/v1/admin/workouts/:id` | Bearer | Admin: `{ notes?, program_name?, day_label? }` |
+| `DELETE` | `/v1/admin/workouts/:id` | Bearer | Admin: hard-delete workout (cascades) |
+| `PATCH` | `/v1/admin/workout-exercises/:id` | Bearer | Admin: `{ canonical_exercise_id?, name?, prescribed_name? }` |
+| `POST` | `/v1/admin/workout-exercises/bulk-link` | Bearer | Admin: `{ nameKey, canonicalExerciseId, dryRun? }` — link unlinked rows where `lower(trim(name))` equals normalized `nameKey` |
+
+### Platform admin: anomaly rules
+
+SQL view **`public.admin_workouts_with_anomalies`** (see migration `20260416180000_workout_exercises_canonical_and_anomaly_view.sql`) lists **`workout_id`** values where **any** exercise line on that workout has:
+
+- **Blank name** (`trim(name) = ''`)
+- **No sets** (no `workout_sets` rows for that line)
+- **Implausible sets**: `reps <= 0`, `reps > 500`, `weight < 0`, or `weight > 3000`
+
+`GET /v1/admin/workouts?anomaly=1` returns only workouts whose id appears in that view. **`unlinked=1`** restricts to workouts that have at least one `workout_exercises` row with **`canonical_exercise_id` is null** (capped server-side to **250** distinct workouts for the `in (...)` filter — narrow with `email` / `userId` if you hit the limit).
+
+Allowlist env vars: **`ADMIN_EMAILS`** (comma-separated) and/or existing **`CATALOG_ADMIN_EMAILS`** / `CATALOG_ADMIN_EMAIL` / `ADMIN_EMAIL` — merged in [`platform-admin.ts`](src/services/platform-admin.ts).
 
 ### `POST /v1/imports/programs`
 

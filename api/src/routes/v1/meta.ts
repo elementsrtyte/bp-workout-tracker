@@ -34,6 +34,21 @@ export function getApiRoot(_req: Request, res: Response): void {
         path: "/v1/admin/catalog/programs",
         description: "Replace one catalog program graph (admin Bearer auth)",
       },
+      deleteCatalogProgram: {
+        method: "DELETE",
+        path: "/v1/admin/catalog/programs/:programId",
+        description: "Remove catalog program and bump catalog_release",
+      },
+      adminCatalogSnapshot: { method: "GET", path: "/v1/admin/catalog/snapshot" },
+      adminExercises: { method: "GET", path: "/v1/admin/exercises" },
+      adminBundledProgress: { method: "GET", path: "/v1/admin/bundled-progress" },
+      adminBundledProgressPatch: { method: "PATCH", path: "/v1/admin/bundled-progress" },
+      adminWorkouts: { method: "GET", path: "/v1/admin/workouts" },
+      adminWorkoutDetail: { method: "GET", path: "/v1/admin/workouts/:id" },
+      adminWorkoutExerciseBulkLink: {
+        method: "POST",
+        path: "/v1/admin/workout-exercises/bulk-link",
+      },
     },
   });
 }
