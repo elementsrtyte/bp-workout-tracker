@@ -366,6 +366,16 @@ final class WorkoutHubViewModel: ObservableObject {
         persistDraft()
     }
 
+    /// Updates a previously logged set (e.g. typo) without undoing newer sets.
+    func replaceLoggedSet(for rowId: String, setIndex: Int, weight: Double, reps: Int) {
+        guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
+        guard setIndex >= 0, setIndex < exerciseRows[i].loggedSets.count else { return }
+        guard reps > 0 else { return }
+        let w = max(0, (weight * 4).rounded() / 4)
+        exerciseRows[i].loggedSets[setIndex] = LoggedSetSnapshot(weight: w, reps: reps)
+        persistDraft()
+    }
+
     /// Swap the exercise for **this session only** (does not edit the saved program). Recomputes weight/reps hints from history.
     func applySessionExerciseSubstitution(rowId: String, newDisplayName: String, clearLoggedSets: Bool) {
         guard let day = activeDay, let program = activeProgram else { return }

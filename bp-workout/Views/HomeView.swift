@@ -2,6 +2,10 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+private func dismissSoftwareKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
 /// Primary screen: day-first logging; program changes rarely and stays in a compact picker.
 struct WorkoutHubView: View {
     @StateObject private var viewModel = WorkoutHubViewModel()
@@ -51,6 +55,13 @@ struct WorkoutHubView: View {
                         }
                     }
                 }
+            }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    dismissSoftwareKeyboard()
+                }
+                .font(.body.weight(.semibold))
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -192,27 +203,6 @@ struct WorkoutHubView: View {
                     if viewModel.dayIndex < p.days.count {
                         let day = p.days[viewModel.dayIndex]
                         lastCompletedTrainingDayLine(program: p, day: day)
-                    }
-
-                    if viewModel.hasLoggedSomething {
-                        HStack(spacing: 10) {
-                            Image(systemName: "clock.badge.checkmark")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(BlueprintTheme.mint)
-                            Text("Workout in progress")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(BlueprintTheme.cream)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(12)
-                        .background(BlueprintTheme.mint.opacity(0.12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(BlueprintTheme.mint.opacity(0.35), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
                     }
 
                     if viewModel.dayIndex < p.days.count {
@@ -513,206 +503,228 @@ private enum SetLogCelebrationKind: Equatable {
     case finishedExercise
 }
 
-/// Burst + banner shown after logging a set or finishing an exercise.
-private struct QuickLogCelebrationBanner: View {
-    let kind: SetLogCelebrationKind
-    let tick: Int
-    var pulse: CGFloat
-    var burst: CGFloat
-
-    private var particleCount: Int { kind == .finishedExercise ? 20 : 14 }
-
-    var body: some View {
-        ZStack {
-            CelebrationBurstLayer(kind: kind, progress: burst, count: particleCount)
-                .frame(height: kind == .finishedExercise ? 86 : 72)
-                .offset(y: 8)
-
-            VStack(spacing: 6) {
-                HStack(spacing: 10) {
-                    if kind == .finishedExercise {
-                        Image(systemName: "sparkle")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(BlueprintTheme.cream)
-                            .symbolEffect(.bounce, value: tick)
-                        Image(systemName: "trophy.fill")
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [BlueprintTheme.amber, BlueprintTheme.cream],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .symbolEffect(.bounce, options: .nonRepeating, value: tick)
-                        Image(systemName: "sparkle")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(BlueprintTheme.amber)
-                            .symbolEffect(.bounce, value: tick)
-                    } else {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(BlueprintTheme.cream)
-                            .symbolEffect(.bounce, value: tick)
-                    }
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(kind == .finishedExercise ? "Exercise complete!" : "Set logged")
-                            .font(.subheadline.weight(.bold))
-                        Text(kind == .finishedExercise ? "That’s a wrap for this movement." : "Nice — stack stays green.")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(BlueprintTheme.cream.opacity(0.88))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .foregroundStyle(BlueprintTheme.cream)
-            .padding(.vertical, 14)
-            .padding(.horizontal, 14)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(bannerGradient)
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color.white.opacity(kind == .finishedExercise ? 0.38 : 0.28),
-                                    Color.clear,
-                                ],
-                                center: .topLeading,
-                                startRadius: 4,
-                                endRadius: 200
-                            )
-                        )
-                        .blendMode(.plusLighter)
-                }
-            }
-            .overlay {
-                GeometryReader { g in
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(0),
-                            .white.opacity(0.42),
-                            .white.opacity(0),
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(width: g.size.width * 0.38)
-                    .rotationEffect(.degrees(18))
-                    .offset(x: -g.size.width * 0.55 + burst * g.size.width * 1.35)
-                    .blendMode(.plusLighter)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.45),
-                                (kind == .finishedExercise ? BlueprintTheme.amber : BlueprintTheme.mint)
-                                    .opacity(0.55),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
-            }
-            .scaleEffect(pulse)
-            .shadow(
-                color: (kind == .finishedExercise ? BlueprintTheme.amber : BlueprintTheme.mint)
-                    .opacity(kind == .finishedExercise ? 0.55 : 0.45),
-                radius: kind == .finishedExercise ? 22 : 18,
-                y: 8
-            )
-        }
-        .transition(.asymmetric(
-            insertion: .scale(scale: 0.86).combined(with: .opacity),
-            removal: .opacity.combined(with: .scale(scale: 0.98))
-        ))
-    }
-
-    private var bannerGradient: LinearGradient {
-        switch kind {
-        case .loggedSet:
-            LinearGradient(
-                colors: [
-                    BlueprintTheme.mint.opacity(0.98),
-                    BlueprintTheme.mint.opacity(0.72),
-                    BlueprintTheme.mint.opacity(0.58),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .finishedExercise:
-            LinearGradient(
-                colors: [
-                    BlueprintTheme.mint.opacity(0.95),
-                    BlueprintTheme.amber.opacity(0.88),
-                    BlueprintTheme.purple.opacity(0.72),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-}
-
-private struct CelebrationBurstLayer: View {
-    let kind: SetLogCelebrationKind
-    var progress: CGFloat
-    let count: Int
-
-    var body: some View {
-        ZStack {
-            ForEach(0..<count, id: \.self) { i in
-                let baseAngle = Double(i) / Double(count) * 2 * Double.pi
-                let jitter = Double(i % 4) * 0.12
-                let angle = baseAngle + jitter
-                let dist: CGFloat = 26 + progress * (kind == .finishedExercise ? 58 : 44)
-                let lift: CGFloat = 10 + progress * 18
-                burstPiece(index: i)
-                    .offset(
-                        x: CGFloat(cos(angle)) * dist * max(0.15, progress),
-                        y: CGFloat(sin(angle)) * dist * max(0.15, progress) - lift * progress
-                    )
-                    .opacity(Double(1 - progress * 0.92))
-                    .scaleEffect(0.25 + 0.75 * progress)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
-    @ViewBuilder
-    private func burstPiece(index i: Int) -> some View {
-        if kind == .finishedExercise, i % 5 == 0 {
-            Image(systemName: "sparkle")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(
-                    [BlueprintTheme.amber, BlueprintTheme.cream, BlueprintTheme.mint, BlueprintTheme.lavender][i % 4]
-                )
-        } else {
-            let size: CGFloat = kind == .finishedExercise ? (i % 3 == 0 ? 6.5 : 4.5) : 4
-            Circle()
-                .fill(
-                    i % 2 == 0
-                        ? BlueprintTheme.cream
-                        : (kind == .finishedExercise ? BlueprintTheme.amber : BlueprintTheme.mint)
-                )
-                .frame(width: size, height: size)
-        }
-    }
-}
-
 private enum QuickLogCardChrome: Equatable {
     /// Normal card with border; optional lone “Superset” pill when `row.supersetGroup != nil`.
     case standalone
     /// Row inside `SupersetQuickLogBlock` (shared chrome; no per-row border).
     case supersetGroupedRow
+}
+
+/// Non-layout celebration: glowing, pulsating stroke + sparkles on the card (no extra vertical space).
+private struct QuickLogCelebrationGlowOverlay: View {
+    let kind: SetLogCelebrationKind
+    var pulse: CGFloat
+    var burst: CGFloat
+    var chrome: QuickLogCardChrome
+
+    private var cornerRadius: CGFloat { chrome == .standalone ? 10 : 8 }
+
+    private var accent: Color {
+        kind == .finishedExercise ? BlueprintTheme.amber : BlueprintTheme.mint
+    }
+
+    private var secondary: Color {
+        kind == .finishedExercise ? BlueprintTheme.cream : BlueprintTheme.lavender
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 45.0, paused: false)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let breathe = 0.5 + 0.5 * sin(t * 6.8)
+            let twinkle = 0.5 + 0.5 * sin(t * 10.5)
+            let lineW = 1.5 + (pulse - 1) * 5 + CGFloat(breathe) * 2.4
+            let haloOpacity = 0.22 + 0.18 * CGFloat(breathe) + 0.12 * burst
+            let glowR = 9 + (pulse - 1) * 15 + burst * 11 + CGFloat(breathe) * 9
+            let spin = t * 1.15
+            let gx = 0.5 + 0.42 * cos(spin)
+            let gy = 0.5 + 0.42 * sin(spin)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(accent.opacity(haloOpacity), lineWidth: 5 + 4 * CGFloat(breathe))
+                    .blur(radius: 2.5 + 1.5 * CGFloat(breathe))
+                    .padding(chrome == .standalone ? 2 : 1)
+
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.62),
+                                accent.opacity(0.98),
+                                secondary.opacity(0.72),
+                                accent.opacity(0.82),
+                                Color.white.opacity(0.38),
+                            ],
+                            startPoint: UnitPoint(x: gx, y: gy),
+                            endPoint: UnitPoint(x: 1 - gx, y: 1 - gy)
+                        ),
+                        lineWidth: lineW
+                    )
+                    .shadow(
+                        color: accent.opacity(0.5 + 0.22 * burst + 0.12 * CGFloat(breathe)),
+                        radius: glowR * 0.55
+                    )
+                    .shadow(color: accent.opacity(0.26), radius: glowR)
+                    .shadow(
+                        color: Color.white.opacity(0.07 + 0.07 * CGFloat(twinkle)),
+                        radius: 5 + 3 * CGFloat(twinkle)
+                    )
+                    .padding(chrome == .standalone ? 2 : 1)
+
+                GeometryReader { geo in
+                    let cx = geo.size.width * 0.5
+                    let cy = geo.size.height * 0.5
+                    let rx = max(geo.size.width * 0.48, 24)
+                    let ry = max(geo.size.height * 0.48, 24)
+                    let sparkleCount = kind == .finishedExercise ? 10 : 7
+                    ForEach(0..<sparkleCount, id: \.self) { i in
+                        let base = Double(i) / Double(sparkleCount) * 2 * Double.pi
+                        let wobble = sin(t * 5.2 + Double(i) * 0.85)
+                        let angle = base + t * 0.55 + 0.12 * wobble
+                        let radial = 1.02 + 0.04 * sin(t * 4 + Double(i))
+                        let ox = CGFloat(cos(angle)) * rx * CGFloat(radial)
+                        let oy = CGFloat(sin(angle)) * ry * CGFloat(radial)
+                        let flicker = 0.28 + 0.62 * pow(0.5 + 0.5 * sin(t * 8.5 + Double(i) * 1.1), 2)
+                        Image(systemName: "sparkle")
+                            .font(.system(size: i % 3 == 0 ? 8 : 6, weight: .bold))
+                            .foregroundStyle(
+                                i % 2 == 0
+                                    ? accent.opacity(0.85)
+                                    : secondary.opacity(0.9)
+                            )
+                            .opacity(flicker)
+                            .scaleEffect(0.65 + 0.35 * CGFloat(twinkle) + (i % 4 == 0 ? 0.08 : 0))
+                            .position(x: cx + ox, y: cy + oy)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scaleEffect(1 + 0.01 * CGFloat(breathe))
+            .allowsHitTesting(false)
+            .transition(.opacity)
+        }
+    }
+}
+
+private struct LoggedSetEditRoute: Identifiable {
+    let id = UUID()
+    let setIndex: Int
+    let snapshot: LoggedSetSnapshot
+}
+
+private struct EditLoggedSetSheet: View {
+    let exerciseName: String
+    let setNumber: Int
+    let initial: LoggedSetSnapshot
+    let onSave: (Double, Int) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var weightText: String
+    @State private var reps: Int
+
+    init(exerciseName: String, setNumber: Int, initial: LoggedSetSnapshot, onSave: @escaping (Double, Int) -> Void) {
+        self.exerciseName = exerciseName
+        self.setNumber = setNumber
+        self.initial = initial
+        self.onSave = onSave
+        _weightText = State(
+            initialValue: initial.weight == 0 ? "BW" : WorkoutPrefill.formatWeight(initial.weight)
+        )
+        _reps = State(initialValue: initial.reps)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(exerciseName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(BlueprintTheme.cream)
+                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Weight")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(BlueprintTheme.muted)
+                    TextField("lb or BW", text: $weightText)
+                        .keyboardType(.decimalPad)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.body.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(BlueprintTheme.cream)
+                        .padding(12)
+                        .background(BlueprintTheme.cardInner)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(BlueprintTheme.border, lineWidth: 1)
+                        )
+                }
+                HStack(spacing: 12) {
+                    Text("Reps")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(BlueprintTheme.muted)
+                    Spacer(minLength: 0)
+                    Button {
+                        reps = max(1, reps - 1)
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.caption.weight(.bold))
+                            .frame(width: 40, height: 40)
+                    }
+                    .buttonStyle(.bordered)
+                    Text("\(reps)")
+                        .font(.body.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(BlueprintTheme.cream)
+                        .frame(minWidth: 36)
+                    Button {
+                        reps = min(999, reps + 1)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.caption.weight(.bold))
+                            .frame(width: 40, height: 40)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(BlueprintTheme.bg)
+            .navigationTitle("Edit set \(setNumber)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        dismissSoftwareKeyboard()
+                    }
+                    .font(.body.weight(.semibold))
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let w = Self.parseWeight(weightText, fallback: initial.weight)
+                        onSave(w, reps)
+                        dismiss()
+                    }
+                    .disabled(reps < 1)
+                }
+            }
+            .tint(BlueprintTheme.purple)
+        }
+    }
+
+    private static func parseWeight(_ raw: String, fallback: Double) -> Double {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return fallback }
+        let lower = t.lowercased()
+        if lower == "bw" || lower == "bodyweight" { return 0 }
+        let norm = t.replacingOccurrences(of: ",", with: ".")
+        guard let v = Double(norm) else { return fallback }
+        return max(0, (v * 4).rounded() / 4)
+    }
 }
 
 private struct QuickLogExerciseCard: View {
@@ -726,10 +738,10 @@ private struct QuickLogExerciseCard: View {
     @FocusState private var weightFieldFocused: Bool
     @State private var celebration: SetLogCelebrationKind?
     @State private var celebrationPulse: CGFloat = 1
-    @State private var celebrationTick: Int = 0
     @State private var celebrationBurst: CGFloat = 0
     @State private var sensorySetTick = 0
     @State private var sensoryExerciseTick = 0
+    @State private var loggedSetEditRoute: LoggedSetEditRoute?
 
     var body: some View {
         let inner = VStack(alignment: .leading, spacing: 10) {
@@ -831,23 +843,14 @@ private struct QuickLogExerciseCard: View {
                 if !weightFieldFocused { syncWeightEntry() }
             }
 
-            if let c = celebration {
-                QuickLogCelebrationBanner(
-                    kind: c,
-                    tick: celebrationTick,
-                    pulse: celebrationPulse,
-                    burst: celebrationBurst
-                )
-            }
-
             HStack(spacing: 8) {
                 Button {
+                    commitWeightEntry()
                     let outcome = viewModel.logSet(for: row.id)
                     switch outcome {
                     case .loggedSetContinuing:
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         sensorySetTick += 1
-                        celebrationTick += 1
                         celebrationBurst = 0
                         withAnimation(.spring(response: 0.38, dampingFraction: 0.68)) {
                             celebration = .loggedSet
@@ -868,7 +871,6 @@ private struct QuickLogExerciseCard: View {
                     case .finishedExercise:
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
                         sensoryExerciseTick += 1
-                        celebrationTick += 1
                         celebrationBurst = 0
                         withAnimation(.spring(response: 0.42, dampingFraction: 0.62)) {
                             celebration = .finishedExercise
@@ -907,6 +909,7 @@ private struct QuickLogExerciseCard: View {
                         onSwapExercise()
                     }
                     Button("Repeat last set") {
+                        commitWeightEntry()
                         viewModel.repeatLastSet(for: row.id)
                     }
                     .disabled(row.loggedSets.isEmpty || row.isSetsComplete)
@@ -922,10 +925,37 @@ private struct QuickLogExerciseCard: View {
             }
 
             if !row.loggedSets.isEmpty {
-                FlowSetChips(sets: row.loggedSets, targetSets: row.targetSets)
+                FlowSetChips(sets: row.loggedSets, targetSets: row.targetSets) { index, snapshot in
+                    loggedSetEditRoute = LoggedSetEditRoute(setIndex: index, snapshot: snapshot)
+                }
             }
         }
 
+        chromeBody(inner)
+            .overlay {
+                if let c = celebration {
+                    QuickLogCelebrationGlowOverlay(
+                        kind: c,
+                        pulse: celebrationPulse,
+                        burst: celebrationBurst,
+                        chrome: chrome
+                    )
+                }
+            }
+            .sheet(item: $loggedSetEditRoute) { route in
+                EditLoggedSetSheet(
+                    exerciseName: row.name,
+                    setNumber: route.setIndex + 1,
+                    initial: route.snapshot,
+                    onSave: { w, r in
+                        viewModel.replaceLoggedSet(for: row.id, setIndex: route.setIndex, weight: w, reps: r)
+                    }
+                )
+            }
+    }
+
+    @ViewBuilder
+    private func chromeBody(_ inner: some View) -> some View {
         switch chrome {
         case .standalone:
             inner
@@ -1022,21 +1052,28 @@ private struct QuickLogExerciseCard: View {
 private struct FlowSetChips: View {
     let sets: [LoggedSetSnapshot]
     let targetSets: Int
+    var onEditSet: (Int, LoggedSetSnapshot) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Logged")
+            Text("Logged · tap to edit")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(BlueprintTheme.muted)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 6)], alignment: .leading, spacing: 6) {
                 ForEach(Array(sets.enumerated()), id: \.offset) { i, s in
-                    Text(chipLabel(setIndex: i + 1, s))
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(BlueprintTheme.cream)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(BlueprintTheme.purple.opacity(0.2))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    Button {
+                        onEditSet(i, s)
+                    } label: {
+                        Text(chipLabel(setIndex: i + 1, s))
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(BlueprintTheme.cream)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(BlueprintTheme.purple.opacity(0.2))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit set \(i + 1), \(chipLabel(setIndex: i + 1, s))")
                 }
             }
         }
