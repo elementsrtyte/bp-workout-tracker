@@ -199,6 +199,22 @@ final class WorkoutHubViewModel: ObservableObject {
         exerciseRows.contains { !$0.loggedSets.isEmpty }
     }
 
+    /// True when there is in-progress data for this program/day (logged sets, edited draft, or rest timer).
+    var canDiscardSession: Bool {
+        if hasLoggedSomething { return true }
+        if restSecondsRemaining != nil { return true }
+        guard let data = UserDefaults.standard.data(forKey: DefaultsKey.draft),
+              let draft = try? JSONDecoder().decode(PersistedDraft.self, from: data),
+              let p = activeProgram, let day = activeDay else { return false }
+        return draft.programId == p.id && draft.dayLabel == day.label
+    }
+
+    /// Clears the in-progress session without saving (draft, timers, logged sets on this screen).
+    func discardSession() {
+        clearDraft()
+        rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
+    }
+
     /// Exercises on this day that are below their prescribed set count (including not started). Warm-up lines are excluded.
     var incompleteExerciseRows: [QuickExerciseState] {
         exerciseRows.filter { !$0.isWarmup && $0.loggedSets.count < $0.targetSets }

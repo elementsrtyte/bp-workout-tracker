@@ -41,6 +41,8 @@ class LogWorkoutScreen extends ConsumerStatefulWidget {
 
 class _LogWorkoutScreenState extends ConsumerState<LogWorkoutScreen> {
   late final List<List<_SetControllers>> _matrix;
+  /// Snapshot of weight/reps fields at open — used to detect edits before save.
+  late final List<List<(String, String)>> _initialFieldTexts;
   bool _saving = false;
 
   @override
@@ -61,6 +63,70 @@ class _LogWorkoutScreenState extends ConsumerState<LogWorkoutScreen> {
         ),
       );
     }).toList();
+    _initialFieldTexts = _matrix
+        .map(
+          (row) => row
+              .map((c) => (c.weight.text, c.reps.text))
+              .toList(),
+        )
+        .toList();
+    for (final row in _matrix) {
+      for (final c in row) {
+        c.weight.addListener(_onFieldEdit);
+        c.reps.addListener(_onFieldEdit);
+      }
+    }
+  }
+
+  void _onFieldEdit() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _isDirty {
+    for (var ei = 0; ei < _matrix.length; ei++) {
+      for (var si = 0; si < _matrix[ei].length; si++) {
+        final c = _matrix[ei][si];
+        final init = _initialFieldTexts[ei][si];
+        if (c.weight.text != init.$1 || c.reps.text != init.$2) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  Future<bool> _confirmLeaveWithoutSaving() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Leave without saving?'),
+        content: const Text(
+          'This workout will not be logged. You can open Log this day again anytime.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    return go ?? false;
+  }
+
+  Future<void> _attemptPop() async {
+    if (!_isDirty) {
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
+      return;
+    }
+    if (!await _confirmLeaveWithoutSaving()) return;
+    if (!context.mounted) return;
+    Navigator.of(context).pop();
   }
 
   static String _stripTrailingZero(double v) {
@@ -72,6 +138,8 @@ class _LogWorkoutScreenState extends ConsumerState<LogWorkoutScreen> {
   void dispose() {
     for (final row in _matrix) {
       for (final c in row) {
+        c.weight.removeListener(_onFieldEdit);
+        c.reps.removeListener(_onFieldEdit);
         c.weight.dispose();
         c.reps.dispose();
       }
@@ -169,8 +237,20 @@ class _LogWorkoutScreenState extends ConsumerState<LogWorkoutScreen> {
   @override
   Widget build(BuildContext context) {
     final day = widget.program.days[widget.dayIndex];
-    return Scaffold(
+    return PopScope(
+      canPop: !_isDirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (!await _confirmLeaveWithoutSaving()) return;
+        if (!context.mounted) return;
+        Navigator.of(context).pop();
+      },
+      child: Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: _saving ? null : _attemptPop,
+        ),
         title: Text(day.label.isEmpty ? 'Log workout' : day.label),
         actions: [
           TextButton(
@@ -204,6 +284,7 @@ class _LogWorkoutScreenState extends ConsumerState<LogWorkoutScreen> {
           ],
         ],
       ),
+    ),
     );
   }
 }

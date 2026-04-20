@@ -16,6 +16,7 @@ struct WorkoutHubView: View {
     @ObservedObject private var bundleData = BundleDataStore.shared
 
     @State private var showIncompleteSaveConfirm = false
+    @State private var showDiscardSessionConfirm = false
     @State private var exerciseHistoryItem: ExerciseHistorySheetItem?
     @State private var substitutionRoute: ExerciseSubstitutionSheetRoute?
     @State private var workoutSaveConfettiTrigger = 0
@@ -54,6 +55,21 @@ struct WorkoutHubView: View {
                                 .foregroundStyle(BlueprintTheme.mint)
                         }
                     }
+                }
+            }
+            if viewModel.canDiscardSession {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Cancel workout", role: .destructive) {
+                            showDiscardSessionConfirm = true
+                        }
+                    } label: {
+                        Text("•••")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(BlueprintTheme.mutedLight)
+                            .padding(.horizontal, 2)
+                    }
+                    .accessibilityLabel("Workout options")
                 }
             }
             ToolbarItemGroup(placement: .keyboard) {
@@ -104,6 +120,22 @@ struct WorkoutHubView: View {
             Button("Keep editing", role: .cancel) {}
         } message: {
             Text(viewModel.incompleteSaveAlertMessage)
+        }
+        .confirmationDialog(
+            "Cancel this workout?",
+            isPresented: $showDiscardSessionConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Discard session", role: .destructive) {
+                viewModel.discardSession()
+            }
+            Button("Keep editing", role: .cancel) {}
+        } message: {
+            if viewModel.hasLoggedSomething {
+                Text("Your logged sets will be removed from this session. Nothing is saved until you tap Save workout.")
+            } else {
+                Text("Any in-progress edits for this training day will be cleared.")
+            }
         }
         .sheet(item: $substitutionRoute) { route in
             ExerciseSubstitutionSheet(
