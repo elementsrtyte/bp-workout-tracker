@@ -47,8 +47,12 @@ private struct ImportProgramAPIResponse: Codable {
     let historicalWorkouts: [LLMHistoricalWorkout]?
 }
 
-private struct ImportProgramRequest: Encodable {
+private struct ImportProgramAPIRequest: Encodable {
     let text: String
+    let importKind: String
+    let targetProgramName: String?
+    let targetDayLabel: String?
+    let existingDaysSummary: String?
 }
 
 private enum ImportDateParsers {
@@ -83,63 +87,85 @@ enum OpenAIProgramImportService {
         case emptyPaste
         case decode(String)
         case noTrainingContent
+        case noWorkoutLogsParsed
+        case noTrainingDayParsed
 
         var errorDescription: String? {
             switch self {
             case .emptyPaste: return "Paste a workout description first."
             case .decode(let m): return m
             case .noTrainingContent: return "Couldn’t find any program days or exercises to import."
+            case .noWorkoutLogsParsed:
+                return "Couldn’t find any completed workouts with sets to import. Check the paste or try another import type."
+            case .noTrainingDayParsed:
+                return "Couldn’t extract a training day from the text. Try the “New program” type if this is a full plan."
             }
         }
     }
 
     private static let maxHistoricalSessions = 250
 
-    /// Parses free-form text via the Blueprint API (`POST /v1/imports/programs` with JSON `{ "text": "…" }`).
-    static func importResult(fromPastedText text: String) async throws -> ProgramImportResult {
+    /// Parses free-form text via the Blueprint API (`POST /v1/imports/programs` JSON body).
+    static func importResult(
+        text: String,
+        contentKind: ProgramImportContentKind,
+        selectedProgram: WorkoutProgram?,
+        trainingDayLabelHint: String?
+    ) async throws -> ProgramImportResult {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ImportError.emptyPaste }
         guard BlueprintAPIConfig.isConfigured else { throw BlueprintAPIError.notConfigured }
 
         let token = try await SupabaseSessionManager.shared.accessTokenForAPI()
+        let dayHint = trainingDayLabelHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary: String? =
+            contentKind == .newTrainingDay
+                ? selectedProgram.map { ProgramImportMerge.summarizeDaysForAPI($0) }
+                : nil
+        let body = ImportProgramAPIRequest(
+            text: trimmed,
+            importKind: contentKind.apiImportKind,
+            targetProgramName: selectedProgram.map(\.name),
+            targetDayLabel: (dayHint?.isEmpty == false) ? dayHint : nil,
+            existingDaysSummary: summary
+        )
         let data = try await BlueprintAPIClient.post(
             path: "/v1/imports/programs",
-            body: ImportProgramRequest(text: trimmed),
+            body: body,
             accessToken: token
         )
-        return try decodeImportResponse(data)
+        return try decodeImportResponse(data, contentKind: contentKind)
     }
 
-    /// Plain-text body (`Content-Type: text/plain`) on `POST /v1/imports/programs`.
-    static func importResult(fromPlainTextBody text: String) async throws -> ProgramImportResult {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { throw ImportError.emptyPaste }
-        guard BlueprintAPIConfig.isConfigured else { throw BlueprintAPIError.notConfigured }
-
-        let token = try await SupabaseSessionManager.shared.accessTokenForAPI()
-        let data = try await BlueprintAPIClient.postPlainText(
-            path: "/v1/imports/programs",
-            text: trimmed,
-            accessToken: token
-        )
-        return try decodeImportResponse(data)
-    }
-
-    private static func decodeImportResponse(_ data: Data) throws -> ProgramImportResult {
+    private static func decodeImportResponse(_ data: Data, contentKind: ProgramImportContentKind) throws -> ProgramImportResult {
         let decoded = try JSONDecoder().decode(ImportProgramAPIResponse.self, from: data)
         let historical = mapHistoricalWorkouts(decoded.historicalWorkouts ?? [])
         var program = try mapToWorkoutProgram(decoded.program)
         if program.days.isEmpty, !historical.isEmpty {
             program = try synthesizeProgram(from: historical, base: program)
         }
-        guard !program.days.isEmpty else { throw ImportError.noTrainingContent }
+        if contentKind == .workoutLog, historical.isEmpty {
+            throw ImportError.noWorkoutLogsParsed
+        }
+        if contentKind == .newTrainingDay, program.days.isEmpty {
+            throw ImportError.noTrainingDayParsed
+        }
+        guard !program.days.isEmpty else {
+            throw ImportError.noTrainingContent
+        }
         return ProgramImportResult(program: program, historicalWorkouts: historical)
+    }
+
+    private static func syntheticSessionDate(index: Int) -> Date {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: Date())
+        return cal.date(byAdding: .day, value: -index, to: start) ?? start
     }
 
     private static func mapHistoricalWorkouts(_ rows: [LLMHistoricalWorkout]) -> [HistoricalWorkoutDraft] {
         var out: [HistoricalWorkoutDraft] = []
-        for row in rows.prefix(maxHistoricalSessions) {
-            guard let date = ImportDateParsers.parse(row.date) else { continue }
+        for (idx, row) in rows.prefix(maxHistoricalSessions).enumerated() {
+            let date = ImportDateParsers.parse(row.date) ?? syntheticSessionDate(index: idx)
             var exDrafts: [HistoricalExerciseDraft] = []
             for ex in row.exercises ?? [] {
                 let name = ex.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

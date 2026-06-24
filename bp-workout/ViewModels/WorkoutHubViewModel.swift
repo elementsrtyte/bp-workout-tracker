@@ -52,12 +52,16 @@ final class WorkoutHubViewModel: ObservableObject {
     @Published private(set) var exerciseRows: [QuickExerciseState] = []
     /// Wall-clock start for the current in-progress session (persisted with draft).
     @Published private(set) var sessionWallClockStart: Date?
-    /// Seconds remaining for rest between sets; nil when idle.
+    /// Seconds remaining for rest between sets; nil when idle. `0` during overtime countdown.
     @Published private(set) var restSecondsRemaining: Int?
+    /// Seconds past the configured rest period; nil when not in overtime.
+    @Published private(set) var restOvertimeSeconds: Int?
 
     private let bundle: BundleDataStore
     private var lastLoggedSnapshot: [LoggedWorkout] = []
     private var restCountdownTask: Task<Void, Never>?
+    private var restLiveContext: RestLiveContext?
+    private var lastSessionActivityAt = Date()
     /// Rest duration after logging a set when more sets remain (from Settings).
     var restBetweenSetsSeconds: Int = 90
 
@@ -224,6 +228,38 @@ final class WorkoutHubViewModel: ObservableObject {
         !incompleteExerciseRows.isEmpty
     }
 
+    private struct RestLiveContext {
+        let exerciseName: String
+        let setNumber: Int
+        let totalSets: Int
+        let targetReps: Int
+        let isAmrap: Bool
+        let weightLabel: String
+    }
+
+    /// Call when the user edits the in-progress session (resets inactivity reminder).
+    func recordSessionActivity() {
+        lastSessionActivityAt = Date()
+        refreshInactivityReminder()
+    }
+
+    private func refreshInactivityReminder() {
+        let active = hasLoggedSomething || restSecondsRemaining != nil
+        WorkoutInactivityMonitor.scheduleReminderIfNeeded(lastActivity: lastSessionActivityAt, sessionActive: active)
+    }
+
+    private static func weightLabel(for weight: Double) -> String {
+        if weight == 0 { return "BW" }
+        return "\(WorkoutPrefill.formatWeight(weight)) lb"
+    }
+
+    private static func workingValues(for row: QuickExerciseState) -> (weight: Double, reps: Int) {
+        if let last = row.loggedSets.last {
+            return (last.weight, last.reps)
+        }
+        return (row.workingWeight, row.workingReps)
+    }
+
     /// User-facing detail for the incomplete-save warning (keep reasonably short).
     var incompleteSaveAlertMessage: String {
         let rows = incompleteExerciseRows
@@ -246,6 +282,7 @@ final class WorkoutHubViewModel: ObservableObject {
         bundle.loadIfNeeded()
         reconcileActiveProgramSelection()
         rebuildExerciseRows(usingLogged: lastLoggedSnapshot)
+        refreshInactivityReminder()
     }
 
     /// Call when profile library membership changes (e.g. Programs tab).
@@ -293,6 +330,7 @@ final class WorkoutHubViewModel: ObservableObject {
         let v = max(0, exerciseRows[i].workingWeight + delta)
         exerciseRows[i].workingWeight = (v * 4).rounded() / 4
         persistDraft()
+        recordSessionActivity()
     }
 
     /// Parses "185", "185.5", "BW", comma decimals; ignores incomplete input.
@@ -304,18 +342,21 @@ final class WorkoutHubViewModel: ObservableObject {
         if lower == "bw" || lower == "bodyweight" {
             exerciseRows[i].workingWeight = 0
             persistDraft()
+            recordSessionActivity()
             return
         }
         let norm = t.replacingOccurrences(of: ",", with: ".")
         guard let v = Double(norm) else { return }
         exerciseRows[i].workingWeight = max(0, (v * 4).rounded() / 4)
         persistDraft()
+        recordSessionActivity()
     }
 
     func nudgeReps(for rowId: String, delta: Int) {
         guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
         exerciseRows[i].workingReps = max(1, exerciseRows[i].workingReps + delta)
         persistDraft()
+        recordSessionActivity()
     }
 
     func logSet(for rowId: String) -> LogSetOutcome {
@@ -325,10 +366,14 @@ final class WorkoutHubViewModel: ObservableObject {
         let r = exerciseRows[i].workingReps
         guard r > 0 else { return .noop }
         exerciseRows[i].loggedSets.append(LoggedSetSnapshot(weight: w, reps: r))
-        let nowComplete = exerciseRows[i].loggedSets.count >= exerciseRows[i].targetSets
+        exerciseRows[i].workingWeight = w
+        exerciseRows[i].workingReps = r
+        let row = exerciseRows[i]
+        let nowComplete = row.loggedSets.count >= row.targetSets
         persistDraft()
+        recordSessionActivity()
         if !nowComplete {
-            startRestBetweenSetsIfConfigured()
+            startRestBetweenSetsIfConfigured(after: row)
             return .loggedSetContinuing
         }
         return .finishedExercise
@@ -338,25 +383,67 @@ final class WorkoutHubViewModel: ObservableObject {
         restCountdownTask?.cancel()
         restCountdownTask = nil
         restSecondsRemaining = nil
+        restOvertimeSeconds = nil
+        restLiveContext = nil
         RestTimerNotificationScheduler.cancelScheduled()
+        WorkoutRestLiveActivityManager.end()
     }
 
-    private func startRestBetweenSetsIfConfigured() {
+    private func startRestBetweenSetsIfConfigured(after row: QuickExerciseState) {
         let sec = max(0, restBetweenSetsSeconds)
         guard sec > 0 else { return }
         skipRestTimer()
+        let nextSet = row.loggedSets.count + 1
+        let (w, reps) = Self.workingValues(for: row)
+        let ctx = RestLiveContext(
+            exerciseName: row.name,
+            setNumber: nextSet,
+            totalSets: row.targetSets,
+            targetReps: reps,
+            isAmrap: row.isAmrap,
+            weightLabel: Self.weightLabel(for: w)
+        )
+        restLiveContext = ctx
         restSecondsRemaining = sec
+        restOvertimeSeconds = nil
         RestTimerNotificationScheduler.scheduleRestComplete(after: TimeInterval(sec))
+        if let program = activeProgram, let day = activeDay {
+            WorkoutRestLiveActivityManager.start(
+                programName: program.name,
+                dayLabel: day.label,
+                exerciseName: ctx.exerciseName,
+                setNumber: ctx.setNumber,
+                totalSets: ctx.totalSets,
+                targetReps: ctx.targetReps,
+                isAmrap: ctx.isAmrap,
+                weightLabel: ctx.weightLabel,
+                restSeconds: sec
+            )
+        }
         restCountdownTask = Task { @MainActor in
-            for remaining in stride(from: sec, through: 0, by: -1) {
+            for remaining in stride(from: sec, through: 1, by: -1) {
                 if Task.isCancelled { return }
                 self.restSecondsRemaining = remaining
-                if remaining == 0 { break }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
-            if !Task.isCancelled {
-                self.restSecondsRemaining = nil
-                RestTimerNotificationScheduler.cancelScheduled()
+            if Task.isCancelled { return }
+            self.restSecondsRemaining = 0
+            var overtime = 0
+            while !Task.isCancelled {
+                self.restOvertimeSeconds = overtime
+                if let ctx = self.restLiveContext {
+                    WorkoutRestLiveActivityManager.updateOvertime(
+                        exerciseName: ctx.exerciseName,
+                        setNumber: ctx.setNumber,
+                        totalSets: ctx.totalSets,
+                        targetReps: ctx.targetReps,
+                        isAmrap: ctx.isAmrap,
+                        weightLabel: ctx.weightLabel,
+                        overtimeSeconds: overtime
+                    )
+                }
+                overtime += 1
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
     }
@@ -368,10 +455,12 @@ final class WorkoutHubViewModel: ObservableObject {
         exerciseRows[i].workingWeight = last.weight
         exerciseRows[i].workingReps = last.reps
         exerciseRows[i].loggedSets.append(LoggedSetSnapshot(weight: last.weight, reps: last.reps))
-        let nowComplete = exerciseRows[i].loggedSets.count >= exerciseRows[i].targetSets
+        let row = exerciseRows[i]
+        let nowComplete = row.loggedSets.count >= row.targetSets
         persistDraft()
+        recordSessionActivity()
         if !nowComplete {
-            startRestBetweenSetsIfConfigured()
+            startRestBetweenSetsIfConfigured(after: row)
         }
     }
 
@@ -379,7 +468,12 @@ final class WorkoutHubViewModel: ObservableObject {
         guard let i = exerciseRows.firstIndex(where: { $0.id == rowId }) else { return }
         guard !exerciseRows[i].loggedSets.isEmpty else { return }
         exerciseRows[i].loggedSets.removeLast()
+        if let last = exerciseRows[i].loggedSets.last {
+            exerciseRows[i].workingWeight = last.weight
+            exerciseRows[i].workingReps = last.reps
+        }
         persistDraft()
+        recordSessionActivity()
     }
 
     /// Updates a previously logged set (e.g. typo) without undoing newer sets.
@@ -390,6 +484,7 @@ final class WorkoutHubViewModel: ObservableObject {
         let w = max(0, (weight * 4).rounded() / 4)
         exerciseRows[i].loggedSets[setIndex] = LoggedSetSnapshot(weight: w, reps: reps)
         persistDraft()
+        recordSessionActivity()
     }
 
     /// Swap the exercise for **this session only** (does not edit the saved program). Recomputes weight/reps hints from history.
@@ -510,6 +605,10 @@ final class WorkoutHubViewModel: ObservableObject {
         }
         let bundleData = bundle.progressBundle
         let persistedDraft = loadDraft()
+        let activeDraft: PersistedDraft? = {
+            guard let d = persistedDraft, d.programId == program.id, d.dayLabel == day.label else { return nil }
+            return d
+        }()
         var rows: [QuickExerciseState] = []
         for (idx, ex) in day.exercises.enumerated() {
             let sug = WorkoutPrefill.suggest(
@@ -538,8 +637,7 @@ final class WorkoutHubViewModel: ObservableObject {
                 programNotes: ex.trimmedProgramNotes,
                 prescribedTargetReps: ex.prescribedRepTarget
             )
-            if let draft = persistedDraft, draft.programId == program.id, draft.dayLabel == day.label,
-               let line = draft.lines.first(where: { $0.sortOrder == idx }) {
+            if let draft = activeDraft, let line = draft.lines.first(where: { $0.sortOrder == idx }) {
                 let draftName = line.exerciseName
                 state.name = draftName
                 if draftName != ex.name {
@@ -559,11 +657,23 @@ final class WorkoutHubViewModel: ObservableObject {
                 state.workingReps = line.workingReps
                 let loaded = line.sets.map { LoggedSetSnapshot(weight: $0.weight, reps: $0.reps) }
                 state.loggedSets = Array(loaded.prefix(prescribed))
+                if let last = state.loggedSets.last {
+                    state.workingWeight = last.weight
+                    state.workingReps = last.reps
+                }
             }
             rows.append(state)
         }
         exerciseRows = rows
-        sessionWallClockStart = persistedDraft?.sessionStartedAt
+        sessionWallClockStart = activeDraft?.sessionStartedAt
+        if sessionWallClockStart == nil, rows.contains(where: { !$0.loggedSets.isEmpty }) {
+            sessionWallClockStart = Date()
+            persistDraft()
+        }
+        if hasLoggedSomething {
+            lastSessionActivityAt = Date()
+        }
+        refreshInactivityReminder()
     }
 
     private func loadDraft() -> PersistedDraft? {
@@ -574,16 +684,20 @@ final class WorkoutHubViewModel: ObservableObject {
     private func persistDraft() {
         guard let program = activeProgram, let day = activeDay else { return }
         let hasSetsNow = exerciseRows.contains { !$0.loggedSets.isEmpty }
-        let previousStart = loadDraft()?.sessionStartedAt
+        let previousStart: Date? = {
+            guard let d = loadDraft(), d.programId == program.id, d.dayLabel == day.label else { return nil }
+            return d.sessionStartedAt
+        }()
         let sessionStartedAt: Date? = hasSetsNow ? (previousStart ?? Date()) : nil
         sessionWallClockStart = sessionStartedAt
         let lines: [PersistedDraft.Line] = exerciseRows.map { r in
-            PersistedDraft.Line(
+            let (ww, wr) = Self.workingValues(for: r)
+            return PersistedDraft.Line(
                 sortOrder: r.sortOrder,
                 exerciseName: r.name,
                 prescribedName: r.prescribedName == r.name ? nil : r.prescribedName,
-                workingWeight: r.workingWeight,
-                workingReps: r.workingReps,
+                workingWeight: ww,
+                workingReps: wr,
                 sets: r.loggedSets.map { PersistedDraft.PersistedSet(weight: $0.weight, reps: $0.reps) }
             )
         }
@@ -602,6 +716,7 @@ final class WorkoutHubViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: DefaultsKey.draft)
         sessionWallClockStart = nil
         skipRestTimer()
+        WorkoutInactivityMonitor.cancelReminder()
     }
 
     private func restoredDayIndex(forProgramId id: String) -> Int {

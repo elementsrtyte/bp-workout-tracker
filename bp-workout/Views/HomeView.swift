@@ -48,7 +48,7 @@ struct WorkoutHubView: View {
                     Text(viewModel.activeDay?.label ?? "Workout")
                         .font(.headline)
                         .foregroundStyle(BlueprintTheme.cream)
-                    if viewModel.hasLoggedSomething, let start = viewModel.sessionWallClockStart {
+                    if let start = viewModel.sessionWallClockStart {
                         TimelineView(.periodic(from: .now, by: 1.0)) { _ in
                             Text(Self.formatSessionElapsed(since: start))
                                 .font(.caption2.weight(.medium).monospacedDigit())
@@ -93,6 +93,7 @@ struct WorkoutHubView: View {
         }
         .onAppear {
             RestTimerNotificationScheduler.requestAuthorizationIfNeeded()
+            WorkoutInactivityMonitor.requestAuthorizationIfNeeded()
             viewModel.restBetweenSetsSeconds = appSettings.restBetweenSetsSeconds
             viewModel.onAppear()
             viewModel.syncLoggedWorkouts(loggedWorkouts)
@@ -303,24 +304,37 @@ struct WorkoutHubView: View {
 
     @ViewBuilder
     private var restCountdownBar: some View {
-        if let sec = viewModel.restSecondsRemaining, sec > 0 {
+        if let sec = viewModel.restSecondsRemaining {
+            let overtime = viewModel.restOvertimeSeconds ?? 0
+            let isOvertime = sec == 0 && overtime > 0
             HStack(spacing: 12) {
-                Image(systemName: "timer")
+                Image(systemName: isOvertime ? "exclamationmark.triangle.fill" : "timer")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(BlueprintTheme.amber)
+                    .foregroundStyle(isOvertime ? BlueprintTheme.danger : BlueprintTheme.amber)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Rest before next set")
+                    Text(isOvertime ? "Rest overtime" : "Rest before next set")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(BlueprintTheme.cream)
-                    Text("\(sec)s remaining · notification when time is up if the app is in the background")
-                        .font(.caption2)
-                        .foregroundStyle(BlueprintTheme.cream.opacity(0.72))
+                    if isOvertime {
+                        Text("+\(overtime)s over target · tap Skip when you start the next set")
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.amber)
+                    } else {
+                        Text("\(sec)s remaining · lock screen shows countdown when resting")
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.cream.opacity(0.72))
+                    }
                 }
                 Spacer(minLength: 0)
-                Text("\(sec)s")
-                    .font(.title3.weight(.bold).monospacedDigit())
-                    .foregroundStyle(BlueprintTheme.amber)
-                    .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                if isOvertime {
+                    Text("+\(overtime)s")
+                        .font(.title3.weight(.bold).monospacedDigit())
+                        .foregroundStyle(BlueprintTheme.danger)
+                } else {
+                    Text("\(sec)s")
+                        .font(.title3.weight(.bold).monospacedDigit())
+                        .foregroundStyle(BlueprintTheme.amber)
+                }
                 Button("Skip") {
                     viewModel.skipRestTimer()
                 }
@@ -774,8 +788,107 @@ private struct QuickLogExerciseCard: View {
     @State private var sensorySetTick = 0
     @State private var sensoryExerciseTick = 0
     @State private var loggedSetEditRoute: LoggedSetEditRoute?
+    /// Completed exercises collapse to save vertical space; user can expand again.
+    @State private var isExpanded = true
+
+    private var isMinimized: Bool { row.isSetsComplete && !isExpanded }
 
     var body: some View {
+        Group {
+            if isMinimized {
+                minimizedContent
+            } else {
+                expandedContent
+            }
+        }
+        .overlay {
+            if let c = celebration {
+                QuickLogCelebrationGlowOverlay(
+                    kind: c,
+                    pulse: celebrationPulse,
+                    burst: celebrationBurst,
+                    chrome: chrome
+                )
+            }
+        }
+        .sheet(item: $loggedSetEditRoute) { route in
+            EditLoggedSetSheet(
+                exerciseName: row.name,
+                setNumber: route.setIndex + 1,
+                initial: route.snapshot,
+                onSave: { w, r in
+                    viewModel.replaceLoggedSet(for: row.id, setIndex: route.setIndex, weight: w, reps: r)
+                }
+            )
+        }
+        .onAppear {
+            if row.isSetsComplete { isExpanded = false }
+        }
+        .onChange(of: row.isSetsComplete) { _, complete in
+            if complete {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.55) {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+                        isExpanded = false
+                    }
+                }
+            } else {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    isExpanded = true
+                }
+            }
+        }
+    }
+
+    private var minimizedContent: some View {
+        chromeBody(
+            HStack(alignment: .center, spacing: 10) {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        isExpanded = true
+                    }
+                } label: {
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.body)
+                            .foregroundStyle(BlueprintTheme.mint)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(row.name)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(BlueprintTheme.cream)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Text(quickLogSetSummary(row.loggedSets, targetSets: row.targetSets))
+                                .font(.caption2)
+                                .foregroundStyle(BlueprintTheme.muted)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(BlueprintTheme.muted)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Expand \(row.name), completed")
+
+                Menu {
+                    exerciseOptionsMenuItems()
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(BlueprintTheme.mutedLight)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("More options for \(row.name)")
+            },
+            compact: true
+        )
+    }
+
+    private var expandedContent: some View {
         let inner = VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
                 Rectangle()
@@ -789,6 +902,12 @@ private struct QuickLogExerciseCard: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(BlueprintTheme.cream)
                             .fixedSize(horizontal: false, vertical: true)
+                        if row.isSetsComplete {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(BlueprintTheme.mint)
+                                .accessibilityHidden(true)
+                        }
                         if chrome == .standalone, row.supersetGroup != nil {
                             Text("Superset")
                                 .font(.caption2.weight(.bold))
@@ -850,6 +969,22 @@ private struct QuickLogExerciseCard: View {
                     }
                 }
                 Spacer(minLength: 0)
+                if row.isSetsComplete {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            isExpanded = false
+                        }
+                    } label: {
+                        Image(systemName: "chevron.up.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(BlueprintTheme.lavender)
+                            .frame(width: 40, height: 40)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Minimize \(row.name)")
+                }
                 Button(action: onHistory) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
                         .font(.body.weight(.medium))
@@ -931,24 +1066,13 @@ private struct QuickLogExerciseCard: View {
                 .buttonStyle(.borderedProminent)
                 .tint(row.isSetsComplete ? BlueprintTheme.mint : BlueprintTheme.purple)
                 .animation(.spring(response: 0.35, dampingFraction: 0.78), value: row.isSetsComplete)
-                .animation(.spring(response: 0.35, dampingFraction: 0.78), value: row.loggedSets.count)
+                .animation(.spring(response: 0.35, dampingFraction: 0.82), value: row.loggedSets.count)
                 .disabled(row.isSetsComplete)
                 .sensoryFeedback(.increase, trigger: sensorySetTick)
                 .sensoryFeedback(.success, trigger: sensoryExerciseTick)
 
                 Menu {
-                    Button("Swap exercise…") {
-                        onSwapExercise()
-                    }
-                    Button("Repeat last set") {
-                        commitWeightEntry()
-                        viewModel.repeatLastSet(for: row.id)
-                    }
-                    .disabled(row.loggedSets.isEmpty || row.isSetsComplete)
-                    Button("Undo last set", role: .destructive) {
-                        viewModel.removeLastSet(for: row.id)
-                    }
-                    .disabled(row.loggedSets.isEmpty)
+                    exerciseOptionsMenuItems()
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -963,45 +1087,44 @@ private struct QuickLogExerciseCard: View {
             }
         }
 
-        chromeBody(inner)
-            .overlay {
-                if let c = celebration {
-                    QuickLogCelebrationGlowOverlay(
-                        kind: c,
-                        pulse: celebrationPulse,
-                        burst: celebrationBurst,
-                        chrome: chrome
-                    )
-                }
-            }
-            .sheet(item: $loggedSetEditRoute) { route in
-                EditLoggedSetSheet(
-                    exerciseName: row.name,
-                    setNumber: route.setIndex + 1,
-                    initial: route.snapshot,
-                    onSave: { w, r in
-                        viewModel.replaceLoggedSet(for: row.id, setIndex: route.setIndex, weight: w, reps: r)
-                    }
-                )
-            }
+        return chromeBody(inner, compact: false)
     }
 
     @ViewBuilder
-    private func chromeBody(_ inner: some View) -> some View {
+    private func exerciseOptionsMenuItems() -> some View {
+        Button("Swap exercise…") {
+            onSwapExercise()
+        }
+        Button("Repeat last set") {
+            commitWeightEntry()
+            viewModel.repeatLastSet(for: row.id)
+        }
+        .disabled(row.loggedSets.isEmpty || row.isSetsComplete)
+        Button("Undo last set", role: .destructive) {
+            viewModel.removeLastSet(for: row.id)
+        }
+        .disabled(row.loggedSets.isEmpty)
+    }
+
+    @ViewBuilder
+    private func chromeBody(_ inner: some View, compact: Bool) -> some View {
         switch chrome {
         case .standalone:
             inner
-                .padding(12)
+                .padding(compact ? 10 : 12)
                 .background(BlueprintTheme.card)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(BlueprintTheme.border, lineWidth: 1)
+                        .stroke(
+                            row.isSetsComplete && compact ? BlueprintTheme.mint.opacity(0.35) : BlueprintTheme.border,
+                            lineWidth: 1
+                        )
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         case .supersetGroupedRow:
             inner
-                .padding(.horizontal, 10)
-                .padding(.vertical, 12)
+                .padding(.horizontal, compact ? 8 : 10)
+                .padding(.vertical, compact ? 8 : 12)
         }
     }
 
@@ -1029,14 +1152,12 @@ private struct QuickLogExerciseCard: View {
                         .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.bordered)
-                TextField("lb", text: $weightEntry)
-                    .focused($weightFieldFocused)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.center)
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(BlueprintTheme.cream)
-                    .frame(minWidth: 56)
-                    .onSubmit { commitWeightEntry() }
+                SelectAllWeightField(
+                    text: $weightEntry,
+                    isFocused: $weightFieldFocused,
+                    onCommit: commitWeightEntry
+                )
+                .frame(minWidth: 56)
                 Button {
                     viewModel.nudgeWeight(for: row.id, delta: 2.5)
                 } label: {
@@ -1048,9 +1169,6 @@ private struct QuickLogExerciseCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onChange(of: weightFieldFocused) { _, on in
-            if !on { commitWeightEntry() }
-        }
     }
 
     private func nudgeChip(title: String, value: String, minus: @escaping () -> Void, plus: @escaping () -> Void) -> some View {
@@ -1079,6 +1197,15 @@ private struct QuickLogExerciseCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+private func quickLogSetSummary(_ sets: [LoggedSetSnapshot], targetSets: Int) -> String {
+    sets.enumerated().map { i, s in
+        let core: String
+        if s.weight == 0 { core = "BW×\(s.reps)" }
+        else { core = "\(WorkoutPrefill.formatWeight(s.weight))×\(s.reps)" }
+        return targetSets > 1 ? "\(i + 1). \(core)" : core
+    }.joined(separator: " · ")
 }
 
 private struct FlowSetChips: View {

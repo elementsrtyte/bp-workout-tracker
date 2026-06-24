@@ -1,7 +1,9 @@
 import Foundation
+import os.log
 
-/// Pushes a locally saved `LoggedWorkout` tree via the Blueprint API (server writes to Supabase).
 enum BlueprintWorkoutSyncClient {
+    private static let log = Logger(subsystem: "blueprint.bp-workout", category: "WorkoutSync")
+
     private struct SyncSet: Encodable {
         let id: UUID
         let weight: Double
@@ -34,16 +36,25 @@ enum BlueprintWorkoutSyncClient {
     }()
 
     @MainActor
-    static func push(_ workout: LoggedWorkout) async {
-        guard BlueprintAPIConfig.isConfigured else { return }
+    static func push(_ workout: LoggedWorkout) async -> Bool {
+        guard BlueprintAPIConfig.isConfigured else {
+            log.error("Sync skipped: API not configured")
+            return false
+        }
         let token: String
         do {
             token = try await SupabaseSessionManager.shared.accessTokenForAPI()
         } catch {
-            return
+            log.error("Sync skipped: no auth token (\(error.localizedDescription, privacy: .public))")
+            return false
         }
 
         let sortedEx = workout.exercises.sorted { $0.sortOrder < $1.sortOrder }
+        guard !sortedEx.isEmpty else {
+            log.error("Sync skipped: workout \(workout.id.uuidString, privacy: .public) has no exercises")
+            return false
+        }
+
         let syncEx: [SyncExercise] = sortedEx.map { ex in
             let sortedSets = ex.sets.sorted { $0.order < $1.order }
             return SyncExercise(
@@ -66,9 +77,16 @@ enum BlueprintWorkoutSyncClient {
         )
 
         do {
-            _ = try await BlueprintAPIClient.post(path: "/v1/workouts", body: body, accessToken: token)
+            _ = try await BlueprintAPIClient.post(
+                path: "/v1/workouts",
+                body: body,
+                accessToken: token
+            )
+            log.info("Synced workout \(workout.id.uuidString, privacy: .public) (\(syncEx.count) exercises)")
+            return true
         } catch {
-            // Non-fatal: local SwiftData row remains source of truth until sync succeeds.
+            log.error("Sync failed for \(workout.id.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 }

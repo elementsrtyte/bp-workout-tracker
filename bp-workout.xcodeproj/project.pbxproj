@@ -14,11 +14,41 @@
 			remoteGlobalIDString = EC54A3252F8ACB38009FBBA0;
 			remoteInfo = "bp-workout";
 		};
+		EC54A3562F8ACB38009FBBA0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EC54A31E2F8ACB38009FBBA0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EC54A3502F8ACB38009FBBA0;
+			remoteInfo = WorkoutWidgetExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		EC54A3542F8ACB38009FBBA0 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				EC54A3552F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXBuildFile section */
+		EC54A3552F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex in Embed Foundation Extensions */ = {
+			isa = PBXBuildFile;
+			fileRef = EC54A3512F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex */;
+			settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); };
+		};
+/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		EC54A3262F8ACB38009FBBA0 /* bp-workout.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "bp-workout.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		EC54A3412F8ACB38009FBBA0 /* bp-workoutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "bp-workoutTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		EC54A3512F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WorkoutWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +62,25 @@
 			path = "bp-workoutTests";
 			sourceTree = "<group>";
 		};
+		EC54A3522F8ACB38009FBBA0 /* WorkoutWidgetExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				EC54A35E2F8ACB38009FBBA0 /* Exceptions for "WorkoutWidgetExtension" */,
+			);
+			path = WorkoutWidgetExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		EC54A35E2F8ACB38009FBBA0 /* Exceptions for "WorkoutWidgetExtension" */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = EC54A3502F8ACB38009FBBA0 /* WorkoutWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		EC54A3232F8ACB38009FBBA0 /* Frameworks */ = {
@@ -49,6 +97,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		EC54A3592F8ACB38009FBBA0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -56,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				EC54A3282F8ACB38009FBBA0 /* bp-workout */,
+				EC54A3522F8ACB38009FBBA0 /* WorkoutWidgetExtension */,
 				EC54A3402F8ACB38009FBBA0 /* bp-workoutTests */,
 				EC54A3272F8ACB38009FBBA0 /* Products */,
 			);
@@ -65,6 +121,7 @@
 			isa = PBXGroup;
 			children = (
 				EC54A3262F8ACB38009FBBA0 /* bp-workout.app */,
+				EC54A3512F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex */,
 				EC54A3412F8ACB38009FBBA0 /* bp-workoutTests.xctest */,
 			);
 			name = Products;
@@ -80,10 +137,12 @@
 				EC54A3222F8ACB38009FBBA0 /* Sources */,
 				EC54A3232F8ACB38009FBBA0 /* Frameworks */,
 				EC54A3242F8ACB38009FBBA0 /* Resources */,
+				EC54A3542F8ACB38009FBBA0 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				EC54A3572F8ACB38009FBBA0 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				EC54A3282F8ACB38009FBBA0 /* bp-workout */,
@@ -118,6 +177,28 @@
 			productReference = EC54A3412F8ACB38009FBBA0 /* bp-workoutTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		EC54A3502F8ACB38009FBBA0 /* WorkoutWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EC54A35A2F8ACB38009FBBA0 /* Build configuration list for PBXNativeTarget "WorkoutWidgetExtension" */;
+			buildPhases = (
+				EC54A3582F8ACB38009FBBA0 /* Sources */,
+				EC54A3592F8ACB38009FBBA0 /* Frameworks */,
+				EC54A35B2F8ACB38009FBBA0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				EC54A3522F8ACB38009FBBA0 /* WorkoutWidgetExtension */,
+			);
+			name = WorkoutWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = WorkoutWidgetExtension;
+			productReference = EC54A3512F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -134,6 +215,9 @@
 					EC54A3422F8ACB38009FBBA0 = {
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = EC54A3252F8ACB38009FBBA0;
+					};
+					EC54A3502F8ACB38009FBBA0 = {
+						CreatedOnToolsVersion = 26.4;
 					};
 				};
 			};
@@ -152,6 +236,7 @@
 			projectRoot = "";
 			targets = (
 				EC54A3252F8ACB38009FBBA0 /* bp-workout */,
+				EC54A3502F8ACB38009FBBA0 /* WorkoutWidgetExtension */,
 				EC54A3422F8ACB38009FBBA0 /* bp-workoutTests */,
 			);
 		};
@@ -166,6 +251,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		EC54A3442F8ACB38009FBBA0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EC54A35B2F8ACB38009FBBA0 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -189,6 +281,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		EC54A3582F8ACB38009FBBA0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -196,6 +295,11 @@
 			isa = PBXTargetDependency;
 			target = EC54A3252F8ACB38009FBBA0 /* bp-workout */;
 			targetProxy = EC54A3462F8ACB38009FBBA0 /* PBXContainerItemProxy */;
+		};
+		EC54A3572F8ACB38009FBBA0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EC54A3502F8ACB38009FBBA0 /* WorkoutWidgetExtension */;
+			targetProxy = EC54A3562F8ACB38009FBBA0 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -339,6 +443,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -384,6 +489,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -455,6 +561,60 @@
 			};
 			name = Release;
 		};
+		EC54A35C2F8ACB38009FBBA0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 52GQY69NS4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WorkoutWidgetExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "BP Workout";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "blueprint.bp-workout.workout-widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		EC54A35D2F8ACB38009FBBA0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 52GQY69NS4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WorkoutWidgetExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "BP Workout";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "blueprint.bp-workout.workout-widget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -481,6 +641,15 @@
 			buildConfigurations = (
 				EC54A3482F8ACB38009FBBA0 /* Debug */,
 				EC54A3492F8ACB38009FBBA0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EC54A35A2F8ACB38009FBBA0 /* Build configuration list for PBXNativeTarget "WorkoutWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EC54A35C2F8ACB38009FBBA0 /* Debug */,
+				EC54A35D2F8ACB38009FBBA0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

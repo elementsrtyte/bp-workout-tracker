@@ -92,29 +92,10 @@ struct ProgramMarketplaceView: View {
         }
         .onAppear { bundle.loadIfNeeded() }
         .sheet(isPresented: $importFromTextPresented) {
-            ImportProgramTextView { result in
-                editorRoute = .createFromImport(result.program)
-                if !result.historicalWorkouts.isEmpty {
-                    Task { @MainActor in
-                        do {
-                            let inserted = try ImportHistoryPersistence.apply(
-                                result.historicalWorkouts,
-                                programId: result.program.id,
-                                programName: result.program.name,
-                                modelContext: modelContext
-                            )
-                            for w in inserted {
-                                await BlueprintWorkoutSyncClient.push(w)
-                            }
-                            importSummaryMessage =
-                                "Imported \(inserted.count) past workout\(inserted.count == 1 ? "" : "s") into your log."
-                        } catch {
-                            importSummaryMessage =
-                                "Program opened, but history import failed: \(error.localizedDescription)"
-                        }
-                    }
-                }
+            ImportProgramTextView { outcome in
+                handleProgramImport(outcome)
             }
+            .environmentObject(programLibrary)
         }
         .alert("Import", isPresented: Binding(
             get: { importSummaryMessage != nil },
@@ -172,6 +153,86 @@ struct ProgramMarketplaceView: View {
         return p.name.lowercased().contains(query)
             || p.subtitle.lowercased().contains(query)
             || (p.categoryTitle?.lowercased().contains(query) ?? false)
+    }
+
+    private func handleProgramImport(_ outcome: ProgramImportOutcome) {
+        switch outcome.contentKind {
+        case .newProgram:
+            editorRoute = .createFromImport(outcome.result.program)
+            applyImportedHistory(outcome.result)
+        case .workoutLog:
+            guard let p = outcome.selectedProgram else { return }
+            let name = p.name
+            Task { @MainActor in
+                await pushImportedHistory(
+                    outcome.result.historicalWorkouts,
+                    programId: p.id,
+                    programName: p.name
+                ) { count in
+                    "Imported \(count) workout\(count == 1 ? "" : "s") into \(name)."
+                }
+            }
+        case .newTrainingDay:
+            guard let base = outcome.selectedProgram else { return }
+            guard let merged = ProgramImportMerge.appendingFirstDay(base: base, imported: outcome.result.program) else {
+                importSummaryMessage = "Couldn’t add the imported day to the program."
+                return
+            }
+            if base.isUserCreated == true {
+                editorRoute = .editCustom(merged)
+            } else {
+                editorRoute = .editBundled(merged)
+            }
+            if !outcome.result.historicalWorkouts.isEmpty {
+                let baseName = base.name
+                Task { @MainActor in
+                    await pushImportedHistory(
+                        outcome.result.historicalWorkouts,
+                        programId: base.id,
+                        programName: base.name
+                    ) { count in
+                        "Also logged \(count) pasted session\(count == 1 ? "" : "s") under \(baseName)."
+                    }
+                }
+            }
+        }
+    }
+
+    private func applyImportedHistory(_ result: ProgramImportResult) {
+        guard !result.historicalWorkouts.isEmpty else { return }
+        let progName = result.program.name
+        Task { @MainActor in
+            await pushImportedHistory(
+                result.historicalWorkouts,
+                programId: result.program.id,
+                programName: result.program.name
+            ) { count in
+                "Imported \(count) past workout\(count == 1 ? "" : "s") for \(progName)."
+            }
+        }
+    }
+
+    private func pushImportedHistory(
+        _ drafts: [HistoricalWorkoutDraft],
+        programId: String,
+        programName: String,
+        summary: (Int) -> String
+    ) async {
+        guard !drafts.isEmpty else { return }
+        do {
+            let inserted = try ImportHistoryPersistence.apply(
+                drafts,
+                programId: programId,
+                programName: programName,
+                modelContext: modelContext
+            )
+            for w in inserted {
+                await BlueprintWorkoutSyncClient.push(w)
+            }
+            importSummaryMessage = summary(inserted.count)
+        } catch {
+            importSummaryMessage = "History import failed: \(error.localizedDescription)"
+        }
     }
 
     private var searchQuery: String {

@@ -27,7 +27,7 @@ export function getApiRoot(_req: Request, res: Response): void {
         method: "POST",
         path: "/v1/imports/programs",
         description:
-          "AI import: application/json {text}, text/plain body, or multipart file field \"file\"",
+          "AI import: JSON { text, importKind?, targetProgramName?, targetDayLabel?, existingDaysSummary? }, text/plain (text only, program mode), or multipart file + same optional fields",
       },
       publishCatalogProgram: {
         method: "POST",

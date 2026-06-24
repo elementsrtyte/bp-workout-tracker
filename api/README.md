@@ -72,9 +72,13 @@ Allowlist env vars: **`ADMIN_EMAILS`** (comma-separated) and/or existing **`CATA
 
 Same path; choose representation:
 
-1. **JSON:** `Content-Type: application/json`, body `{ "text": "…" }` (paste-style).
-2. **Plain text:** `Content-Type: text/plain; charset=utf-8` — body is the workout text only.
-3. **Multipart:** `multipart/form-data`, field **`file`** (plain text, max 2MB).
+1. **JSON:** `Content-Type: application/json`, body:
+   - `text` (required): pasted source.
+   - `importKind` (optional): `program` (default) | `workout_log` | `program_day` — steers the system prompt (template vs log vs single day).
+   - `targetProgramName`, `targetDayLabel` (optional): context for the model (e.g. which plan logs belong to).
+   - `existingDaysSummary` (optional): free-text outline of current days for `program_day` merges.
+2. **Plain text:** `Content-Type: text/plain; charset=utf-8` — body is the workout text only (always `program` mode).
+3. **Multipart:** `multipart/form-data`, field **`file`** (plain text, max 2MB); other fields may repeat the JSON options as form fields.
 
 **Response** (all three):
 
@@ -85,7 +89,7 @@ Same path; choose representation:
 }
 ```
 
-`historicalWorkouts` is dated sessions when the model finds parseable history; otherwise `[]`.
+`historicalWorkouts` entries may include `"date": null` when the source has no calendar date; clients should assign placeholder dates. Otherwise `historicalWorkouts` may be empty.
 
 Protected routes (`/v1/workouts`, `/v1/exercises/*`, `/v1/imports/*`, `/v1/admin/*`) require a valid Supabase session bearer token.
 

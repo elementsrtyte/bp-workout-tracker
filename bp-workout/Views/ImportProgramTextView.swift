@@ -1,13 +1,18 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Paste or pick a text file; Blueprint API turns noisy plain text into a program template and optional history.
+/// Paste or pick a text file; user picks import type first, then Blueprint API parses with the right prompt.
 struct ImportProgramTextView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var programLibrary: UserProgramLibrary
+    @ObservedObject private var bundle = BundleDataStore.shared
     @ObservedObject private var auth: SupabaseSessionManager = .shared
 
-    var onParsed: (ProgramImportResult) -> Void
+    var onParsed: (ProgramImportOutcome) -> Void
 
+    @State private var contentKind: ProgramImportContentKind = .newProgram
+    @State private var selectedProgramId: String = ""
+    @State private var dayLabelHint: String = ""
     @State private var text = ""
     @State private var busy = false
     @State private var errorMessage: String?
@@ -17,66 +22,122 @@ struct ImportProgramTextView: View {
         BlueprintAPIConfig.isConfigured && auth.phase == .signedIn
     }
 
+    private var profilePrograms: [WorkoutProgram] {
+        programLibrary.programsInProfile(from: bundle.mergedPrograms)
+    }
+
+    private var selectedProgram: WorkoutProgram? {
+        profilePrograms.first { $0.id == selectedProgramId }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Paste exports, notes, or logs—even noisy text. The API builds your program template and pulls in dated workout history when it can (sets, reps, weights).")
-                        .font(.caption)
-                        .foregroundStyle(BlueprintTheme.mutedLight)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button {
-                        showFileImporter = true
-                    } label: {
-                        Label("Choose text file…", systemImage: "doc.badge.plus")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(BlueprintTheme.lavender)
-                    .disabled(!aiReady)
-
-                    TextEditor(text: $text)
-                        .font(.body)
-                        .foregroundStyle(BlueprintTheme.cream)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 220)
-                        .padding(12)
-                        .background(BlueprintTheme.cardInner)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(BlueprintTheme.border, lineWidth: 1)
-                        )
-
-                    if !aiReady {
-                        Text(
-                            !BlueprintAPIConfig.isConfigured
-                                ? "Blueprint API URL is not configured. Set BLUEPRINT_API_URL (e.g. http://127.0.0.1:8787) and run the api server."
-                                : "Sign in to use import. Your session is sent with each request."
-                        )
-                        .font(.caption)
-                        .foregroundStyle(BlueprintTheme.amber)
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if let errorMessage {
-                        Text(errorMessage)
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Choose what you’re importing so the parser can focus. Then paste notes, exports, or logs—even without exact dates.")
                             .font(.caption)
-                            .foregroundStyle(BlueprintTheme.danger)
+                            .foregroundStyle(BlueprintTheme.mutedLight)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        BlueprintMenuPicker(
+                            title: "Data type",
+                            selection: $contentKind,
+                            options: ProgramImportContentKind.allCases.map { ($0, $0.title) }
+                        )
+
+                        Text(contentKind.detail)
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if contentKind != .newProgram {
+                            if profilePrograms.isEmpty {
+                                Text("Add at least one program to your profile (Programs tab) to attach logs or a new day.")
+                                    .font(.caption)
+                                    .foregroundStyle(BlueprintTheme.amber)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else {
+                                BlueprintMenuPicker(
+                                    title: "Program",
+                                    selection: Binding(
+                                        get: { selectedProgramId },
+                                        set: { selectedProgramId = $0 }
+                                    ),
+                                    options: profilePrograms.map { ($0.id, $0.name) }
+                                )
+                            }
+                        }
+
+                        if contentKind == .newTrainingDay {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Day label hint (optional)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(BlueprintTheme.muted)
+                                TextField("e.g. Pull B, Day 4", text: $dayLabelHint)
+                                    .textFieldStyle(.plain)
+                                    .font(.subheadline)
+                                    .foregroundStyle(BlueprintTheme.cream)
+                                    .padding(12)
+                                    .background(BlueprintTheme.cardInner)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(BlueprintTheme.border, lineWidth: 1)
+                                    )
+                            }
+                        }
+
+                        Button {
+                            showFileImporter = true
+                        } label: {
+                            Label("Choose text file…", systemImage: "doc.badge.plus")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(BlueprintTheme.lavender)
+                        .disabled(!aiReady)
+
+                        TextEditor(text: $text)
+                            .font(.body)
+                            .foregroundStyle(BlueprintTheme.cream)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 220)
+                            .padding(12)
+                            .background(BlueprintTheme.cardInner)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(BlueprintTheme.border, lineWidth: 1)
+                            )
+
+                        if !aiReady {
+                            Text(
+                                !BlueprintAPIConfig.isConfigured
+                                    ? "Blueprint API URL is not configured. Set BLUEPRINT_API_URL (e.g. http://127.0.0.1:8787) and run the api server."
+                                    : "Sign in to use import. Your session is sent with each request."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(BlueprintTheme.amber)
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        if let errorMessage {
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundStyle(BlueprintTheme.danger)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Text(footerHint)
+                            .font(.caption2)
+                            .foregroundStyle(BlueprintTheme.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-
-                    Text("Past workouts need ISO dates (YYYY-MM-DD) in the source for history to import. Review the program in the editor before saving.")
-                        .font(.caption2)
-                        .foregroundStyle(BlueprintTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .background(BlueprintTheme.bg)
                 .blueprintDismissKeyboardOnScroll()
@@ -122,13 +183,58 @@ struct ImportProgramTextView: View {
                 }
             }
             .tint(BlueprintTheme.purple)
+            .onAppear {
+                bundle.loadIfNeeded()
+                reconcileProgramSelection()
+            }
+            .onChange(of: contentKind) { _, _ in
+                reconcileProgramSelection()
+            }
+            .onChange(of: programLibrary.updateCounter) { _, _ in
+                reconcileProgramSelection()
+            }
+            .onChange(of: bundle.userProgramsRevision) { _, _ in
+                reconcileProgramSelection()
+            }
+        }
+    }
+
+    private var footerHint: String {
+        switch contentKind {
+        case .newProgram:
+            return "Review the program in the editor before saving. Past workouts import when the model finds sets in your paste; dates help but are optional—placeholders are used when missing."
+        case .workoutLog:
+            return "Sessions without calendar dates still import: the app assigns recent placeholder days (you can edit dates in the log). Order in your paste is treated as newest-first at the top when dates are missing."
+        case .newTrainingDay:
+            return "You’ll open the program editor with the new day appended. Rename or reorder there if needed."
         }
     }
 
     private var canParse: Bool {
-        !busy
-            && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && aiReady
+        guard !busy,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              aiReady
+        else { return false }
+        switch contentKind {
+        case .newProgram:
+            return true
+        case .workoutLog, .newTrainingDay:
+            return !selectedProgramId.isEmpty && selectedProgram != nil
+        }
+    }
+
+    private func reconcileProgramSelection() {
+        if contentKind == .newProgram {
+            selectedProgramId = ""
+            return
+        }
+        guard !profilePrograms.isEmpty else {
+            selectedProgramId = ""
+            return
+        }
+        if selectedProgramId.isEmpty || !profilePrograms.contains(where: { $0.id == selectedProgramId }) {
+            selectedProgramId = profilePrograms[0].id
+        }
     }
 
     private func loadTextFile(url: URL) async {
@@ -159,8 +265,18 @@ struct ImportProgramTextView: View {
         }
         let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            let result = try await OpenAIProgramImportService.importResult(fromPlainTextBody: content)
-            onParsed(result)
+            let result = try await OpenAIProgramImportService.importResult(
+                text: content,
+                contentKind: contentKind,
+                selectedProgram: selectedProgram,
+                trainingDayLabelHint: contentKind == .newTrainingDay ? dayLabelHint : nil
+            )
+            let outcome = ProgramImportOutcome(
+                contentKind: contentKind,
+                selectedProgram: selectedProgram,
+                result: result
+            )
+            onParsed(outcome)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
