@@ -13,7 +13,7 @@ class AuthShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!Env.isSupabaseConfigured) {
+    if (!Env.isApiConfigured) {
       return const _ConfigMissingScreen();
     }
 
@@ -90,9 +90,8 @@ class _ConfigMissingScreen extends StatelessWidget {
       body: const Padding(
         padding: EdgeInsets.all(24),
         child: Text(
-          'Missing Supabase config. Add real values to `bp_workout_flutter/.env.local` '
-          '(it must exist — copy from `.env.example` — and is bundled on iOS/Android), '
-          'or pass --dart-define / --dart-define-from-file. Also set BLUEPRINT_API_URL for the catalog.',
+          'Missing Blueprint API config. Add BLUEPRINT_API_URL to `bp_workout_flutter/.env.local` '
+          '(copy from `.env.example`) or pass --dart-define / --dart-define-from-file.',
           style: TextStyle(color: BlueprintColors.amber, height: 1.4),
         ),
       ),

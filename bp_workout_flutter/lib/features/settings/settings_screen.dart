@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/env.dart';
 import '../../theme/blueprint_colors.dart';
+import '../auth/auth_providers.dart';
+import '../auth/auth_service.dart';
 
-/// Placeholder — port `SettingsView` + Supabase session.
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final api = Env.blueprintApiUrl;
+    final session = ref.watch(authSessionProvider).valueOrNull;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
@@ -26,13 +29,18 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           ),
-          const ListTile(
-            title: Text('Supabase auth'),
+          ListTile(
+            title: const Text('Account'),
             subtitle: Text(
-              'Next: port Supabase email/password flow from the Swift app.',
-              style: TextStyle(color: BlueprintColors.mutedLight),
+              session?.user?.email ?? 'Not signed in',
+              style: const TextStyle(color: BlueprintColors.mutedLight),
             ),
           ),
+          if (session != null)
+            ListTile(
+              title: const Text('Sign out', style: TextStyle(color: BlueprintColors.danger)),
+              onTap: () => AuthService.instance.signOut(),
+            ),
         ],
       ),
     );

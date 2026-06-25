@@ -31,14 +31,14 @@ If `ios/` already exists, you can instead run:
 flutter pub get
 ```
 
-## Configure API + Supabase (`.env.local`, like `api/`)
+## Configure Blueprint API (`.env.local`, like `api/`)
 
 **iOS/Android:** create **`bp_workout_flutter/.env.local`** (it is a **pubspec asset**, so it is packaged into the app). The simulator does not use your repo folder as the process working directory, so reading only `File('.env.local')` from disk does not work there.
 
 ```bash
 cd bp_workout_flutter
 cp .env.example .env.local
-# Edit .env.local with SUPABASE_URL, SUPABASE_ANON_KEY, BLUEPRINT_API_URL
+# Edit .env.local with BLUEPRINT_API_URL
 flutter pub get
 ```
 
@@ -66,8 +66,6 @@ flutter run --dart-define=BLUEPRINT_API_URL=http://127.0.0.1:8787
 flutter pub get
 # Prefer a local .env (see above); or pass defines:
 flutter run -d "<simulator-id-or-name>" \
-  --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co \
-  --dart-define=SUPABASE_ANON_KEY=your_anon_key \
   --dart-define=BLUEPRINT_API_URL=https://your-api-host
 ```
 

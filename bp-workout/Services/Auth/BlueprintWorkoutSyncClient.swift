@@ -43,7 +43,7 @@ enum BlueprintWorkoutSyncClient {
         }
         let token: String
         do {
-            token = try await SupabaseSessionManager.shared.accessTokenForAPI()
+            token = try await AuthSessionManager.shared.accessTokenForAPI()
         } catch {
             log.error("Sync skipped: no auth token (\(error.localizedDescription, privacy: .public))")
             return false

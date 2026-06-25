@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../theme/blueprint_colors.dart';
 import 'auth_constants.dart';
+import 'auth_service.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -40,12 +40,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _busy = true;
     });
     try {
-      await Supabase.instance.client.auth.signUp(
-        email: _email.text.trim(),
-        password: _password.text,
-      );
+      await AuthService.instance.signUp(_email.text.trim(), _password.text);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(AuthConstants.supabaseSavedEmailKey, _email.text.trim());
+      await prefs.setString(AuthConstants.savedEmailKey, _email.text.trim());
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {

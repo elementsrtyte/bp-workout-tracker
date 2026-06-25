@@ -6,7 +6,7 @@ struct ImportProgramTextView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var programLibrary: UserProgramLibrary
     @ObservedObject private var bundle = BundleDataStore.shared
-    @ObservedObject private var auth: SupabaseSessionManager = .shared
+    @ObservedObject private var auth: AuthSessionManager = .shared
 
     var onParsed: (ProgramImportOutcome) -> Void
 

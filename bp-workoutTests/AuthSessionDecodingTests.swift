@@ -1,7 +1,7 @@
 import XCTest
 @testable import bp_workout
 
-final class SupabaseAuthSessionDecodingTests: XCTestCase {
+final class AuthSessionDecodingTests: XCTestCase {
     private let sampleUserId = UUID(uuidString: "550e8400-e29b-41d4-a716-446655440000")!
 
     func testDecodeFlatGoTruePayload() throws {
@@ -11,7 +11,7 @@ final class SupabaseAuthSessionDecodingTests: XCTestCase {
             "expires_in": 3600,
             "user": ["id": sampleUserId.uuidString],
         ])
-        let s = try SupabaseAuthSessionDecoding.decodeSession(data)
+        let s = try AuthSessionDecoding.decodeSession(data)
         XCTAssertEqual(s.accessToken, "at")
         XCTAssertEqual(s.refreshToken, "rt")
         XCTAssertEqual(s.expiresIn, 3600)
@@ -25,7 +25,7 @@ final class SupabaseAuthSessionDecodingTests: XCTestCase {
             "expires_in": 3600,
             "user": ["id": sampleUserId.uuidString, "email": "you@example.com"],
         ])
-        let s = try SupabaseAuthSessionDecoding.decodeSession(data)
+        let s = try AuthSessionDecoding.decodeSession(data)
         XCTAssertEqual(s.user?.email, "you@example.com")
     }
 
@@ -38,7 +38,7 @@ final class SupabaseAuthSessionDecodingTests: XCTestCase {
                 "user": ["id": sampleUserId.uuidString],
             ] as [String: Any],
         ])
-        let s = try SupabaseAuthSessionDecoding.decodeSession(data)
+        let s = try AuthSessionDecoding.decodeSession(data)
         XCTAssertEqual(s.accessToken, "nested-at")
         XCTAssertEqual(s.refreshToken, "nested-rt")
         XCTAssertEqual(s.expiresIn, 1800)
@@ -53,7 +53,7 @@ final class SupabaseAuthSessionDecodingTests: XCTestCase {
             "expires_at": expiresAt,
             "user": ["id": sampleUserId.uuidString],
         ])
-        let s = try SupabaseAuthSessionDecoding.decodeSession(data)
+        let s = try AuthSessionDecoding.decodeSession(data)
         XCTAssertGreaterThanOrEqual(s.expiresIn, 7195)
         XCTAssertLessThanOrEqual(s.expiresIn, 7205)
     }
@@ -64,7 +64,7 @@ final class SupabaseAuthSessionDecodingTests: XCTestCase {
             "expires_in": 60,
             "user": ["id": sampleUserId.uuidString],
         ])
-        let s = try SupabaseAuthSessionDecoding.decodeSession(data)
+        let s = try AuthSessionDecoding.decodeSession(data)
         XCTAssertEqual(s.user?.id, sampleUserId)
     }
 
@@ -74,7 +74,7 @@ final class SupabaseAuthSessionDecodingTests: XCTestCase {
             "expires_in": 3600.7,
             "user": ["id": sampleUserId.uuidString],
         ])
-        let s = try SupabaseAuthSessionDecoding.decodeSession(data)
+        let s = try AuthSessionDecoding.decodeSession(data)
         XCTAssertEqual(s.expiresIn, 3601)
     }
 
@@ -84,7 +84,7 @@ final class SupabaseAuthSessionDecodingTests: XCTestCase {
             "expires_in": 120,
         ]
         let wrapped = try jsonData(["session": inner])
-        let normalized = SupabaseAuthSessionDecoding.normalizedSessionJSONData(wrapped)
+        let normalized = AuthSessionDecoding.normalizedSessionJSONData(wrapped)
         let obj = try XCTUnwrap(try JSONSerialization.jsonObject(with: normalized) as? [String: Any])
         XCTAssertEqual(obj["access_token"] as? String, "in")
         XCTAssertEqual(obj["expires_in"] as? Int, 120)

@@ -1,6 +1,6 @@
 # Blueprint API
 
-**Express** (Node.js) server for **server-side OpenAI**, **workout catalog**, and **workout sync to Postgres**. The iOS app sends the user’s **Supabase access token** on protected routes (`Authorization: Bearer …`); the server verifies it with Supabase Auth. Public catalog reads use the server’s **anon** key against PostgREST so the app does not call `rest/v1` directly.
+**Express** (Node.js) server for **server-side OpenAI**, **workout catalog**, **auth**, and **workout sync to Postgres**. Clients send a **Blueprint JWT** on protected routes (`Authorization: Bearer …`). The API verifies tokens and reads/writes **Railway Postgres** directly.
 
 Versioned resources live under **`/v1`**. **`GET /v1`** returns a small JSON map of available routes.
 
@@ -12,8 +12,9 @@ Versioned resources live under **`/v1`**. **`GET /v1`** returns a small JSON map
 | `app.ts` | Express app: CORS, JSON body, `/health`, `/v1`, global error handler |
 | `lib/` | Shared primitives (`http-error`) |
 | `middleware/` | `auth`, `platform-admin`, `error-handler`, `program-import-body` (multer + text fallback) |
-| `integrations/` | Supabase Auth + PostgREST clients |
-| `services/` | Domain logic: `workout-catalog`, `workout-sync`, `catalog-publish`, `admin-seed-and-workouts`, `platform-admin`, `openai` (LLM + program import) |
+| `db/` | Postgres connection pool |
+| `integrations/` | JWT sign/verify (`auth-jwt`) |
+| `services/` | Domain logic: `auth-service`, `workout-catalog`, `workout-sync`, `catalog-publish`, `admin-seed-and-workouts`, `platform-admin`, `openai` (LLM + program import) |
 | `routes/v1/` | HTTP adapters: `meta`, `*.routes.ts`, `index.ts` mounts sub-routers |
 
 ## Setup
@@ -21,14 +22,14 @@ Versioned resources live under **`/v1`**. **`GET /v1`** returns a small JSON map
 ```bash
 cd api
 cp .env.example .env
-# Set OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY (same anon key as the app).
-# For `/v1/admin/*` (except where noted): SUPABASE_SERVICE_ROLE_KEY plus ADMIN_EMAILS and/or CATALOG_ADMIN_EMAILS (comma-separated).
+# Set DATABASE_URL, JWT_SECRET (min 32 chars), OPENAI_API_KEY.
+# For `/v1/admin/*`: ADMIN_EMAILS and/or CATALOG_ADMIN_EMAILS (comma-separated).
 # Optional: put secrets in .env.local (gitignored); it overrides .env when present.
 npm install
 npm run dev
 ```
 
-`npm run dev` and `npm run start` load **`api/.env`** then **`api/.env.local`** (override). Run commands from the **`api`** directory so the files are found. Variable names are **`SUPABASE_ANON_KEY`** (uppercase) unless you use the supported alias **`supabase_anon_key`**.
+`npm run dev` and `npm run start` load **`api/.env`** then **`api/.env.local`** (override). Run commands from the **`api`** directory so the files are found.
 
 Default port **8787**. The iOS `MergedConfig-Info.plist` sets `BLUEPRINT_API_URL` to `http://127.0.0.1:8787` for local dev.
 
@@ -91,12 +92,12 @@ Same path; choose representation:
 
 `historicalWorkouts` entries may include `"date": null` when the source has no calendar date; clients should assign placeholder dates. Otherwise `historicalWorkouts` may be empty.
 
-Protected routes (`/v1/workouts`, `/v1/exercises/*`, `/v1/imports/*`, `/v1/admin/*`) require a valid Supabase session bearer token.
+Protected routes (`/v1/workouts`, `/v1/exercises/*`, `/v1/imports/*`, `/v1/admin/*`) require a valid Blueprint JWT (`Authorization: Bearer …`).
 
 ### Example: import from a text file (curl)
 
 ```bash
-export TOKEN="<supabase_access_jwt>"
+export TOKEN="<access_jwt_from_/v1/auth/token>"
 curl -sS -X POST "http://127.0.0.1:8787/v1/imports/programs" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: text/plain; charset=utf-8" \

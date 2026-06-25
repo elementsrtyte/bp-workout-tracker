@@ -8,7 +8,7 @@ struct ExerciseSubstitutionSheet: View {
     let hasLoggedSets: Bool
     let catalogExerciseNames: [String]
     @ObservedObject var viewModel: WorkoutHubViewModel
-    @ObservedObject private var auth: SupabaseSessionManager = .shared
+    @ObservedObject private var auth: AuthSessionManager = .shared
 
     @Environment(\.dismiss) private var dismiss
 

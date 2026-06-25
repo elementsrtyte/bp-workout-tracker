@@ -4,15 +4,14 @@ Small **Vite + React** SPA for platform admins: catalog snapshot, bundled progre
 
 ## Requirements
 
-- Supabase project (same as the app) — **anon** key in the browser only.
-- Running **Blueprint API** with `SUPABASE_SERVICE_ROLE_KEY` and **`ADMIN_EMAILS`** and/or **`CATALOG_ADMIN_EMAILS`** including your Supabase account email.
+- Running **Blueprint API** with `DATABASE_URL`, `JWT_SECRET`, and **`ADMIN_EMAILS`** and/or **`CATALOG_ADMIN_EMAILS`** including your admin account email.
 
 ## Setup
 
 ```bash
 cd admin-web
 cp .env.example .env.local
-# Edit .env.local
+# Set VITE_BLUEPRINT_API_URL in .env.local
 npm install
 npm run dev
 ```
@@ -26,9 +25,9 @@ npm run build
 npm run preview
 ```
 
-Deploy the `dist/` folder to any static host; set the same `VITE_*` variables at build time.
+Deploy the `dist/` folder to any static host; set `VITE_BLUEPRINT_API_URL` at build time.
 
 ## Related
 
 - API admin routes: [api/README.md](../api/README.md) (Platform admin section).
-- Migration for `canonical_exercise_id` and anomaly view: `supabase/migrations/20260416180000_workout_exercises_canonical_and_anomaly_view.sql`.
+- Schema reference: [db/railway/schema.sql](../db/railway/schema.sql).

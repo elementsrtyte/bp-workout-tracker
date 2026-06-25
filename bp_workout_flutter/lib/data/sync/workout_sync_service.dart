@@ -1,25 +1,27 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../features/auth/auth_providers.dart';
+import '../../features/auth/auth_service.dart';
 import '../api/blueprint_api_client.dart';
 import '../catalog/catalog_repository.dart';
 import '../models/logged_workout_entity.dart';
 
 final workoutSyncServiceProvider = Provider<WorkoutSyncService>((ref) {
-  return WorkoutSyncService(ref.watch(blueprintApiClientProvider));
+  return WorkoutSyncService(
+    ref.watch(blueprintApiClientProvider),
+    ref.watch(authServiceProvider),
+  );
 });
 
 /// Pushes a logged workout to `POST /v1/workouts` (same contract as iOS).
 class WorkoutSyncService {
-  WorkoutSyncService(this._api);
+  WorkoutSyncService(this._api, this._auth);
 
   final BlueprintApiClient _api;
+  final AuthService _auth;
 
   Future<void> push(LoggedWorkoutEntity workout) async {
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    if (token == null || token.isEmpty) {
-      throw StateError('Not signed in');
-    }
+    final token = await _auth.accessTokenForApi();
     await _api.post<void>(
       '/v1/workouts',
       body: _body(workout),

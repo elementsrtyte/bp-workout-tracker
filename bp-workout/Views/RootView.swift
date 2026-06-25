@@ -49,7 +49,7 @@ struct RootView: View {
             }
         }
         .task {
-            await SupabaseSessionManager.shared.ensureSession()
+            await AuthSessionManager.shared.ensureSession()
             await bundle.refreshCatalogFromServer()
         }
         .onAppear {

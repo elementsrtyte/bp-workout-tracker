@@ -43,7 +43,7 @@ enum OpenAIRelatedCatalogExerciseClient {
         guard !allowed.isEmpty else { throw ClientError.emptyAllowedList }
 
         guard BlueprintAPIConfig.isConfigured else { throw BlueprintAPIError.notConfigured }
-        let token = try await SupabaseSessionManager.shared.accessTokenForAPI()
+        let token = try await AuthSessionManager.shared.accessTokenForAPI()
         let body = RelatedRequest(exerciseName: ex, allowedExactNames: allowed, limit: min(12, max(1, limit)))
         let data = try await BlueprintAPIClient.post(
             path: "/v1/exercises/related",

@@ -1,4 +1,4 @@
-/// Shared auth prefs keys (match iOS `SupabaseSessionManager` / `AuthFlowViews`).
+/// Shared auth prefs keys (match iOS `AuthSessionManager` saved email key).
 abstract final class AuthConstants {
-  static const supabaseSavedEmailKey = 'supabase.saved.email';
+  static const savedEmailKey = 'supabase.saved.email';
 }

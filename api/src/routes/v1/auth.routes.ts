@@ -22,7 +22,7 @@ authRouter.post("/signup", async (req, res, next) => {
   }
 });
 
-/** POST /v1/auth/token — Supabase-compatible (grant_type in query or body). */
+/** POST /v1/auth/token — GoTrue-compatible (grant_type in query or body). */
 authRouter.post("/token", async (req, res, next) => {
   try {
     const grant =

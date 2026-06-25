@@ -18,7 +18,7 @@ export function LoginPage() {
       <div className="card">
         <h1>Configuration</h1>
         <p className="error">
-          Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in{" "}
+          Set <code>VITE_BLUEPRINT_API_URL</code> in{" "}
           <code>.env.local</code>.
         </p>
       </div>
@@ -44,7 +44,7 @@ export function LoginPage() {
   return (
     <div className="card narrow">
       <h1>Blueprint admin</h1>
-      <p className="muted">Sign in with a Supabase account in the API allowlist.</p>
+      <p className="muted">Sign in with an admin account on the API allowlist.</p>
       <form onSubmit={onSubmit} className="stack">
         <label>
           Email

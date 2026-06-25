@@ -116,7 +116,7 @@ enum OpenAIProgramImportService {
         guard !trimmed.isEmpty else { throw ImportError.emptyPaste }
         guard BlueprintAPIConfig.isConfigured else { throw BlueprintAPIError.notConfigured }
 
-        let token = try await SupabaseSessionManager.shared.accessTokenForAPI()
+        let token = try await AuthSessionManager.shared.accessTokenForAPI()
         let dayHint = trainingDayLabelHint?.trimmingCharacters(in: .whitespacesAndNewlines)
         let summary: String? =
             contentKind == .newTrainingDay

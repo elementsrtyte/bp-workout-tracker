@@ -50,7 +50,7 @@ private struct AuthSecondaryButtonLabel: View {
 /// Wraps the main app: email/password session required (no silent device-only accounts).
 struct AuthRootView: View {
     @EnvironmentObject private var appSettings: AppSettings
-    @ObservedObject private var auth: SupabaseSessionManager = .shared
+    @ObservedObject private var auth: AuthSessionManager = .shared
 
     var body: some View {
         Group {
@@ -89,7 +89,7 @@ struct AuthRootView: View {
 // MARK: - Sign in
 
 private struct AuthLoginView: View {
-    @ObservedObject private var auth: SupabaseSessionManager = .shared
+    @ObservedObject private var auth: AuthSessionManager = .shared
     @State private var email = ""
     @State private var password = ""
     @State private var busy = false
@@ -189,7 +189,7 @@ private struct AuthLoginView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                email = UserDefaults.standard.string(forKey: SupabaseSessionManager.savedEmailKey) ?? ""
+                email = UserDefaults.standard.string(forKey: AuthSessionManager.savedEmailKey) ?? ""
             }
             .sheet(isPresented: $showSignUp) {
                 AuthSignUpView()
@@ -227,7 +227,7 @@ private struct AuthLoginView: View {
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
-            UserDefaults.standard.set(email.trimmingCharacters(in: .whitespacesAndNewlines), forKey: SupabaseSessionManager.savedEmailKey)
+            UserDefaults.standard.set(email.trimmingCharacters(in: .whitespacesAndNewlines), forKey: AuthSessionManager.savedEmailKey)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -238,7 +238,7 @@ private struct AuthLoginView: View {
 
 private struct AuthSignUpView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var auth: SupabaseSessionManager = .shared
+    @ObservedObject private var auth: AuthSessionManager = .shared
     @State private var email = ""
     @State private var password = ""
     @State private var confirm = ""
@@ -347,7 +347,7 @@ private struct AuthSignUpView: View {
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
-            UserDefaults.standard.set(email.trimmingCharacters(in: .whitespacesAndNewlines), forKey: SupabaseSessionManager.savedEmailKey)
+            UserDefaults.standard.set(email.trimmingCharacters(in: .whitespacesAndNewlines), forKey: AuthSessionManager.savedEmailKey)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -359,7 +359,7 @@ private struct AuthSignUpView: View {
 
 private struct AuthForgotPasswordView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var auth: SupabaseSessionManager = .shared
+    @ObservedObject private var auth: AuthSessionManager = .shared
     @State private var email = ""
     @State private var busy = false
     @State private var errorMessage: String?
@@ -471,7 +471,7 @@ private struct AuthForgotPasswordView: View {
 // MARK: - New password (recovery)
 
 private struct AuthSetNewPasswordView: View {
-    @ObservedObject private var auth: SupabaseSessionManager = .shared
+    @ObservedObject private var auth: AuthSessionManager = .shared
     @State private var password = ""
     @State private var confirm = ""
     @State private var busy = false

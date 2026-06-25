@@ -1,7 +1,7 @@
 import Foundation
 
-/// Auth endpoints on the Blueprint API (`/v1/auth/*`). Replaces Supabase GoTrue.
-enum SupabaseConfig {
+/// Auth endpoints on the Blueprint API (`/v1/auth/*`).
+enum AuthConfig {
     /// Auth API base, e.g. `https://api.example.com/v1/auth`
     static var authBaseURL: URL? {
         guard let root = BlueprintAPIConfig.baseURL else { return nil }

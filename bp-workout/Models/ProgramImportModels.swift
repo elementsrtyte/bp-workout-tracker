@@ -111,7 +111,7 @@ struct HistoricalSetDraft: Sendable {
 
 @MainActor
 enum ImportHistoryPersistence {
-    /// Inserts imported historical sessions and returns them for optional Supabase push.
+    /// Inserts imported historical sessions and returns them for optional cloud sync.
     static func apply(
         _ drafts: [HistoricalWorkoutDraft],
         programId: String,

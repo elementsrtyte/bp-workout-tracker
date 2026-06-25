@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../theme/blueprint_colors.dart';
+import 'auth_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -29,11 +29,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _isError = false;
     });
     try {
-      await Supabase.instance.client.auth.resetPasswordForEmail(
-        _email.text.trim(),
-      );
+      await AuthService.instance.requestPasswordRecovery(_email.text.trim());
       setState(() {
-        _message = 'Check your email for a reset link.';
+        _message =
+            'If password reset is enabled, check your email for a reset link.';
       });
     } on AuthException catch (e) {
       setState(() {

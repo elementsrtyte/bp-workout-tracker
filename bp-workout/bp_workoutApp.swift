@@ -17,7 +17,7 @@ struct bp_workoutApp: App {
                 .tint(BlueprintTheme.purple)
                 .preferredColorScheme(.dark)
                 .onOpenURL { url in
-                    Task { await SupabaseSessionManager.shared.handleAuthRedirect(url) }
+                    Task { await AuthSessionManager.shared.handleAuthRedirect(url) }
                 }
         }
         .modelContainer(for: [LoggedWorkout.self, LoggedExercise.self, LoggedSet.self])

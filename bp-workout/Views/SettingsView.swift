@@ -4,7 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
     @EnvironmentObject private var appSettings: AppSettings
-    @ObservedObject private var auth: SupabaseSessionManager = .shared
+    @ObservedObject private var auth: AuthSessionManager = .shared
     @Query(sort: \LoggedWorkout.date, order: .reverse) private var loggedWorkouts: [LoggedWorkout]
 
     var body: some View {
@@ -22,7 +22,7 @@ struct SettingsView: View {
                             auth.signOut()
                         }
                     }
-                    Text("Workout sync uses your Supabase account. Sign out on shared devices.")
+                    Text("Workout sync uses your Blueprint account. Sign out on shared devices.")
                         .font(.caption)
                         .foregroundStyle(BlueprintTheme.mutedLight)
                 }

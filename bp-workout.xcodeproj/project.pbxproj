@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		EC54A3552F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = EC54A3512F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		EC54A3462F8ACB38009FBBA0 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -37,19 +41,21 @@
 		};
 /* End PBXCopyFilesBuildPhase section */
 
-/* Begin PBXBuildFile section */
-		EC54A3552F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex in Embed Foundation Extensions */ = {
-			isa = PBXBuildFile;
-			fileRef = EC54A3512F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex */;
-			settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); };
-		};
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
 		EC54A3262F8ACB38009FBBA0 /* bp-workout.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "bp-workout.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		EC54A3412F8ACB38009FBBA0 /* bp-workoutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "bp-workoutTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		EC54A3512F8ACB38009FBBA0 /* WorkoutWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WorkoutWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		EC54A35E2F8ACB38009FBBA0 /* Exceptions for "WorkoutWidgetExtension" folder in "WorkoutWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = EC54A3502F8ACB38009FBBA0 /* WorkoutWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		EC54A3282F8ACB38009FBBA0 /* bp-workout */ = {
@@ -65,22 +71,12 @@
 		EC54A3522F8ACB38009FBBA0 /* WorkoutWidgetExtension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				EC54A35E2F8ACB38009FBBA0 /* Exceptions for "WorkoutWidgetExtension" */,
+				EC54A35E2F8ACB38009FBBA0 /* Exceptions for "WorkoutWidgetExtension" folder in "WorkoutWidgetExtension" target */,
 			);
 			path = WorkoutWidgetExtension;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
-
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		EC54A35E2F8ACB38009FBBA0 /* Exceptions for "WorkoutWidgetExtension" */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = EC54A3502F8ACB38009FBBA0 /* WorkoutWidgetExtension */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		EC54A3232F8ACB38009FBBA0 /* Frameworks */ = {
@@ -434,6 +430,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "MergedConfig-Info.plist";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -443,7 +440,6 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -480,6 +476,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "MergedConfig-Info.plist";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -489,7 +486,6 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";

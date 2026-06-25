@@ -1,15 +1,15 @@
 import Combine
 import Foundation
 
-/// Supabase Auth: email/password sign-in, password recovery via `bpworkout://auth`, session in Keychain.
+/// Blueprint API auth: email/password sign-in, password recovery via `bpworkout://auth`, session in Keychain.
 @MainActor
-final class SupabaseSessionManager: ObservableObject {
-    static let shared = SupabaseSessionManager()
+final class AuthSessionManager: ObservableObject {
+    static let shared = AuthSessionManager()
 
     /// UserDefaults key for login email prefill (not the legacy device-scoped email).
     static let savedEmailKey = "supabase.saved.email"
 
-    /// Must match `additional_redirect_urls` in `supabase/config.toml` and the app URL scheme.
+    /// Must match the app URL scheme (`bpworkout://auth`).
     static let authRedirectURL = URL(string: "bpworkout://auth")!
 
     enum AuthPhase: Equatable {
@@ -40,7 +40,7 @@ final class SupabaseSessionManager: ObservableObject {
         phase = .checking
         awaitingPasswordResetCompletion = false
         signedInEmail = nil
-        guard SupabaseConfig.isConfigured else {
+        guard AuthConfig.isConfigured else {
             phase = .signedOut
             return
         }
@@ -50,7 +50,7 @@ final class SupabaseSessionManager: ObservableObject {
             phase = .signedOut
             return
         }
-        guard let authBase = SupabaseConfig.authBaseURL else {
+        guard let authBase = AuthConfig.authBaseURL else {
             phase = .signedOut
             return
         }
@@ -72,7 +72,7 @@ final class SupabaseSessionManager: ObservableObject {
 
     /// Ensures a valid access token when already signed in (e.g. before catalog sync).
     func ensureSession() async {
-        guard SupabaseConfig.isConfigured, phase == .signedIn else { return }
+        guard AuthConfig.isConfigured, phase == .signedIn else { return }
         do {
             try await refreshSessionIfNeeded()
         } catch {
@@ -81,19 +81,19 @@ final class SupabaseSessionManager: ObservableObject {
     }
 
     func accessTokenForAPI() async throws -> String {
-        guard SupabaseConfig.isConfigured else {
-            throw SupabaseAuthError.notConfigured
+        guard AuthConfig.isConfigured else {
+            throw AuthError.notConfigured
         }
-        guard phase == .signedIn else { throw SupabaseAuthError.noSession }
+        guard phase == .signedIn else { throw AuthError.noSession }
         try await refreshSessionIfNeeded()
         guard let t = accessToken, !t.isEmpty else {
-            throw SupabaseAuthError.noSession
+            throw AuthError.noSession
         }
         return t
     }
 
     func userIdForAPI() throws -> UUID {
-        guard let id = userId else { throw SupabaseAuthError.noSession }
+        guard let id = userId else { throw AuthError.noSession }
         return id
     }
 
@@ -112,8 +112,8 @@ final class SupabaseSessionManager: ObservableObject {
     // MARK: - Email / password
 
     func signIn(email: String, password: String) async throws {
-        guard let authBase = SupabaseConfig.authBaseURL else {
-            throw SupabaseAuthError.notConfigured
+        guard let authBase = AuthConfig.authBaseURL else {
+            throw AuthError.notConfigured
         }
         let s = try await postPasswordSignIn(
             authBase: authBase,
@@ -126,8 +126,8 @@ final class SupabaseSessionManager: ObservableObject {
     }
 
     func signUp(email: String, password: String) async throws {
-        guard let authBase = SupabaseConfig.authBaseURL else {
-            throw SupabaseAuthError.notConfigured
+        guard let authBase = AuthConfig.authBaseURL else {
+            throw AuthError.notConfigured
         }
         let s = try await postSignUp(authBase: authBase, email: email, password: password)
         applySession(s)
@@ -136,8 +136,8 @@ final class SupabaseSessionManager: ObservableObject {
     }
 
     func requestPasswordReset(email: String) async throws {
-        guard let authBase = SupabaseConfig.authBaseURL else {
-            throw SupabaseAuthError.notConfigured
+        guard let authBase = AuthConfig.authBaseURL else {
+            throw AuthError.notConfigured
         }
         try await postRecover(
             authBase: authBase,
@@ -148,11 +148,11 @@ final class SupabaseSessionManager: ObservableObject {
 
     /// Call after recovery deep link established a session (still on “set new password” screen).
     func completePasswordRecovery(newPassword: String) async throws {
-        guard let authBase = SupabaseConfig.authBaseURL else {
-            throw SupabaseAuthError.notConfigured
+        guard let authBase = AuthConfig.authBaseURL else {
+            throw AuthError.notConfigured
         }
         try await refreshSessionIfNeeded()
-        guard let token = accessToken, !token.isEmpty else { throw SupabaseAuthError.noSession }
+        guard let token = accessToken, !token.isEmpty else { throw AuthError.noSession }
         try await patchUserPassword(authBase: authBase, accessToken: token, newPassword: newPassword)
         awaitingPasswordResetCompletion = false
     }
@@ -179,13 +179,13 @@ final class SupabaseSessionManager: ObservableObject {
         if accessToken != nil, let exp = accessExpires, exp > Date().addingTimeInterval(120) {
             return
         }
-        guard let authBase = SupabaseConfig.authBaseURL else {
-            throw SupabaseAuthError.notConfigured
+        guard let authBase = AuthConfig.authBaseURL else {
+            throw AuthError.notConfigured
         }
         guard let refreshData = KeychainStore.get(account: kRefresh),
               let refresh = String(data: refreshData, encoding: .utf8), !refresh.isEmpty
         else {
-            throw SupabaseAuthError.noSession
+            throw AuthError.noSession
         }
         let s = try await postTokenExchange(
             authBase: authBase,
@@ -251,7 +251,7 @@ final class SupabaseSessionManager: ObservableObject {
         ]
         if let r = parsed.refreshToken { dict["refresh_token"] = r }
         let data = try JSONSerialization.data(withJSONObject: dict)
-        return try SupabaseAuthSessionDecoding.decodeSession(data)
+        return try AuthSessionDecoding.decodeSession(data)
     }
 
     private static func parseAuthFragment(_ url: URL) -> ParsedFragment? {
@@ -324,20 +324,20 @@ final class SupabaseSessionManager: ObservableObject {
             resolvingAgainstBaseURL: false
         )
         components?.queryItems = [URLQueryItem(name: "grant_type", value: grantType)]
-        guard let url = components?.url else { throw SupabaseAuthError.badURL }
+        guard let url = components?.url else { throw AuthError.badURL }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, res) = try await URLSession.shared.data(for: req)
         try throwIfBadHTTP(res, data: data)
-        return try SupabaseAuthSessionDecoding.decodeSession(data)
+        return try AuthSessionDecoding.decodeSession(data)
     }
 
     private func throwIfBadHTTP(_ res: URLResponse, data: Data) throws {
-        guard let http = res as? HTTPURLResponse else { throw SupabaseAuthError.http(-1) }
+        guard let http = res as? HTTPURLResponse else { throw AuthError.http(-1) }
         guard (200 ... 299).contains(http.statusCode) else {
-            throw SupabaseAuthError.fromResponse(status: http.statusCode, data: data)
+            throw AuthError.fromResponse(status: http.statusCode, data: data)
         }
     }
 
@@ -346,23 +346,23 @@ final class SupabaseSessionManager: ObservableObject {
         if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             let flat = (root["session"] as? [String: Any]) ?? root
             if let at = flat["access_token"] as? String, !at.isEmpty {
-                return try SupabaseAuthSessionDecoding.decodeSession(data)
+                return try AuthSessionDecoding.decodeSession(data)
             }
             if flat["user"] != nil {
                 let msg = (flat["msg"] as? String)
                     ?? (root["msg"] as? String)
                     ?? "Check your email to confirm your account, then sign in."
-                throw SupabaseAuthError.server(msg)
+                throw AuthError.server(msg)
             }
         }
-        return try SupabaseAuthSessionDecoding.decodeSession(data)
+        return try AuthSessionDecoding.decodeSession(data)
     }
 
     private func shouldInvalidateRefreshStorage(for error: Error) -> Bool {
-        if case SupabaseAuthError.http(let code) = error, code == 401 || code == 400 {
+        if case AuthError.http(let code) = error, code == 401 || code == 400 {
             return true
         }
-        if case SupabaseAuthError.server(let msg) = error {
+        if case AuthError.server(let msg) = error {
             let m = msg.lowercased()
             if m.contains("invalid_grant") || m.contains("invalid refresh") || m.contains("jwt") {
                 return true
@@ -372,7 +372,7 @@ final class SupabaseSessionManager: ObservableObject {
     }
 }
 
-enum SupabaseAuthError: LocalizedError {
+enum AuthError: LocalizedError {
     case notConfigured
     case badURL
     case http(Int)
@@ -380,7 +380,7 @@ enum SupabaseAuthError: LocalizedError {
     case noSession
     case server(String)
 
-    static func fromResponse(status: Int, data: Data) -> SupabaseAuthError {
+    static func fromResponse(status: Int, data: Data) -> AuthError {
         if let msg = parseGoTrueErrorMessage(data) {
             return .server(msg)
         }
@@ -393,7 +393,7 @@ enum SupabaseAuthError: LocalizedError {
         case .badURL: return "Invalid auth URL."
         case .http(let c): return "Auth request failed (\(c))."
         case .decode: return "Could not read auth response."
-        case .noSession: return "No Supabase session."
+        case .noSession: return "No active session."
         case .server(let s): return s
         }
     }

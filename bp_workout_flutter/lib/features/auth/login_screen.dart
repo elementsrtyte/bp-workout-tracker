@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/config/env.dart';
 import '../../theme/blueprint_colors.dart';
 import 'auth_constants.dart';
+import 'auth_service.dart';
 import 'forgot_password_screen.dart';
 import 'signup_screen.dart';
 
@@ -31,7 +31,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _loadSavedEmail() async {
     final p = await SharedPreferences.getInstance();
-    _email.text = p.getString(AuthConstants.supabaseSavedEmailKey) ?? '';
+    _email.text = p.getString(AuthConstants.savedEmailKey) ?? '';
     if (mounted) setState(() {});
   }
 
@@ -51,12 +51,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _busy = true;
     });
     try {
-      await Supabase.instance.client.auth.signInWithPassword(
-        email: _email.text.trim(),
-        password: _password.text,
-      );
+      await AuthService.instance.signIn(_email.text.trim(), _password.text);
       final p = await SharedPreferences.getInstance();
-      await p.setString(AuthConstants.supabaseSavedEmailKey, _email.text.trim());
+      await p.setString(AuthConstants.savedEmailKey, _email.text.trim());
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
@@ -179,25 +176,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _configCallouts() {
-    final needSupabase = !Env.isSupabaseConfigured;
-    final needApi = !Env.isApiConfigured;
-    if (!needSupabase && !needApi) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (needSupabase)
-          const Text(
-            'Sign-in requires SUPABASE_URL and SUPABASE_ANON_KEY (dart-define or environment).',
-            style: TextStyle(color: BlueprintColors.amber, fontSize: 12),
-          ),
-        if (needApi) ...[
-          if (needSupabase) const SizedBox(height: 8),
-          const Text(
-            'Catalog refresh and workout sync need BLUEPRINT_API_URL pointing at your Blueprint API.',
-            style: TextStyle(color: BlueprintColors.amber, fontSize: 12),
-          ),
-        ],
-      ],
+    if (Env.isApiConfigured) return const SizedBox.shrink();
+    return const Text(
+      'Sign-in, catalog, and workout sync require BLUEPRINT_API_URL (dart-define or .env.local).',
+      style: TextStyle(color: BlueprintColors.amber, fontSize: 12),
     );
   }
 

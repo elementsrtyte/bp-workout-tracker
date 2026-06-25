@@ -19,7 +19,7 @@ enum OpenAIExerciseSubstitutionClient {
         let prescribed = prescribedExercise.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prescribed.isEmpty else { return [] }
         guard BlueprintAPIConfig.isConfigured else { throw BlueprintAPIError.notConfigured }
-        let token = try await SupabaseSessionManager.shared.accessTokenForAPI()
+        let token = try await AuthSessionManager.shared.accessTokenForAPI()
         let trimmedNote = userNote?.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = SubstitutionRequest(
             prescribedExercise: prescribed,

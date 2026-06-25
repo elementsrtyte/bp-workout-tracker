@@ -1,8 +1,8 @@
 import Foundation
 
-/// GoTrue / Supabase Auth session JSON (`/token`, `/signup` when a session is returned).
-/// Kept separate from `SupabaseSessionManager` so decoding can be covered by unit tests.
-enum SupabaseAuthSessionDecoding {
+/// GoTrue-compatible session JSON from Blueprint API `/v1/auth/token`.
+/// Kept separate from `AuthSessionManager` so decoding can be covered by unit tests.
+enum AuthSessionDecoding {
     /// If the root JSON has a `session` object, decode that blob (some clients wrap tokens there).
     static func normalizedSessionJSONData(_ data: Data) -> Data {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
