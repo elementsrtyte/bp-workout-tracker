@@ -50,15 +50,13 @@ final class SupabaseSessionManager: ObservableObject {
             phase = .signedOut
             return
         }
-        guard let root = SupabaseConfig.apiRootURL, let anon = SupabaseConfig.anonKey else {
+        guard let authBase = SupabaseConfig.authBaseURL else {
             phase = .signedOut
             return
         }
-        let authBase = root.appendingPathComponent("auth/v1", isDirectory: false)
         do {
             let s = try await postTokenExchange(
                 authBase: authBase,
-                anonKey: anon,
                 grantType: "refresh_token",
                 body: ["refresh_token": refresh]
             )
@@ -114,13 +112,11 @@ final class SupabaseSessionManager: ObservableObject {
     // MARK: - Email / password
 
     func signIn(email: String, password: String) async throws {
-        guard let root = SupabaseConfig.apiRootURL, let anon = SupabaseConfig.anonKey else {
+        guard let authBase = SupabaseConfig.authBaseURL else {
             throw SupabaseAuthError.notConfigured
         }
-        let authBase = root.appendingPathComponent("auth/v1", isDirectory: false)
         let s = try await postPasswordSignIn(
             authBase: authBase,
-            anonKey: anon,
             email: email,
             password: password
         )
@@ -130,24 +126,21 @@ final class SupabaseSessionManager: ObservableObject {
     }
 
     func signUp(email: String, password: String) async throws {
-        guard let root = SupabaseConfig.apiRootURL, let anon = SupabaseConfig.anonKey else {
+        guard let authBase = SupabaseConfig.authBaseURL else {
             throw SupabaseAuthError.notConfigured
         }
-        let authBase = root.appendingPathComponent("auth/v1", isDirectory: false)
-        let s = try await postSignUp(authBase: authBase, anonKey: anon, email: email, password: password)
+        let s = try await postSignUp(authBase: authBase, email: email, password: password)
         applySession(s)
         awaitingPasswordResetCompletion = false
         phase = .signedIn
     }
 
     func requestPasswordReset(email: String) async throws {
-        guard let root = SupabaseConfig.apiRootURL, let anon = SupabaseConfig.anonKey else {
+        guard let authBase = SupabaseConfig.authBaseURL else {
             throw SupabaseAuthError.notConfigured
         }
-        let authBase = root.appendingPathComponent("auth/v1", isDirectory: false)
         try await postRecover(
             authBase: authBase,
-            anonKey: anon,
             email: email,
             redirectTo: Self.authRedirectURL.absoluteString
         )
@@ -155,13 +148,12 @@ final class SupabaseSessionManager: ObservableObject {
 
     /// Call after recovery deep link established a session (still on “set new password” screen).
     func completePasswordRecovery(newPassword: String) async throws {
-        guard let root = SupabaseConfig.apiRootURL, let anon = SupabaseConfig.anonKey else {
+        guard let authBase = SupabaseConfig.authBaseURL else {
             throw SupabaseAuthError.notConfigured
         }
         try await refreshSessionIfNeeded()
         guard let token = accessToken, !token.isEmpty else { throw SupabaseAuthError.noSession }
-        let authBase = root.appendingPathComponent("auth/v1", isDirectory: false)
-        try await patchUserPassword(authBase: authBase, anonKey: anon, accessToken: token, newPassword: newPassword)
+        try await patchUserPassword(authBase: authBase, accessToken: token, newPassword: newPassword)
         awaitingPasswordResetCompletion = false
     }
 
@@ -187,7 +179,7 @@ final class SupabaseSessionManager: ObservableObject {
         if accessToken != nil, let exp = accessExpires, exp > Date().addingTimeInterval(120) {
             return
         }
-        guard let root = SupabaseConfig.apiRootURL, let anon = SupabaseConfig.anonKey else {
+        guard let authBase = SupabaseConfig.authBaseURL else {
             throw SupabaseAuthError.notConfigured
         }
         guard let refreshData = KeychainStore.get(account: kRefresh),
@@ -195,10 +187,8 @@ final class SupabaseSessionManager: ObservableObject {
         else {
             throw SupabaseAuthError.noSession
         }
-        let authBase = root.appendingPathComponent("auth/v1", isDirectory: false)
         let s = try await postTokenExchange(
             authBase: authBase,
-            anonKey: anon,
             grantType: "refresh_token",
             body: ["refresh_token": refresh]
         )
@@ -281,13 +271,11 @@ final class SupabaseSessionManager: ObservableObject {
         return ParsedFragment(accessToken: access, refreshToken: refresh, expiresIn: exp, linkType: type)
     }
 
-    private func postSignUp(authBase: URL, anonKey: String, email: String, password: String) async throws -> AuthSessionDTO {
+    private func postSignUp(authBase: URL, email: String, password: String) async throws -> AuthSessionDTO {
         let url = authBase.appendingPathComponent("signup")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(anonKey, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
         let body: [String: Any] = ["email": email, "password": password]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, res) = try await URLSession.shared.data(for: req)
@@ -295,34 +283,30 @@ final class SupabaseSessionManager: ObservableObject {
         return try decodeSessionOrSignupMessage(data)
     }
 
-    private func postPasswordSignIn(authBase: URL, anonKey: String, email: String, password: String) async throws -> AuthSessionDTO {
+    private func postPasswordSignIn(authBase: URL, email: String, password: String) async throws -> AuthSessionDTO {
         try await postTokenExchange(
             authBase: authBase,
-            anonKey: anonKey,
             grantType: "password",
             body: ["email": email, "password": password]
         )
     }
 
-    private func postRecover(authBase: URL, anonKey: String, email: String, redirectTo: String) async throws {
+    private func postRecover(authBase: URL, email: String, redirectTo: String) async throws {
         let url = authBase.appendingPathComponent("recover")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(anonKey, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
         let body: [String: Any] = ["email": email, "redirect_to": redirectTo]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, res) = try await URLSession.shared.data(for: req)
         try throwIfBadHTTP(res, data: data)
     }
 
-    private func patchUserPassword(authBase: URL, anonKey: String, accessToken: String, newPassword: String) async throws {
+    private func patchUserPassword(authBase: URL, accessToken: String, newPassword: String) async throws {
         let url = authBase.appendingPathComponent("user")
         var req = URLRequest(url: url)
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(anonKey, forHTTPHeaderField: "apikey")
         req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         let body: [String: Any] = ["password": newPassword]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -332,7 +316,6 @@ final class SupabaseSessionManager: ObservableObject {
 
     private func postTokenExchange(
         authBase: URL,
-        anonKey: String,
         grantType: String,
         body: [String: Any]
     ) async throws -> AuthSessionDTO {
@@ -345,8 +328,6 @@ final class SupabaseSessionManager: ObservableObject {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(anonKey, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, res) = try await URLSession.shared.data(for: req)
         try throwIfBadHTTP(res, data: data)
@@ -408,7 +389,7 @@ enum SupabaseAuthError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured: return "Supabase is not configured."
+        case .notConfigured: return "Blueprint API is not configured."
         case .badURL: return "Invalid auth URL."
         case .http(let c): return "Auth request failed (\(c))."
         case .decode: return "Could not read auth response."

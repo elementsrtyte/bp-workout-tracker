@@ -1,5 +1,5 @@
+import { query } from "../db/pool.js";
 import { HttpError } from "../lib/http-error.js";
-import { restJson, supabaseAnonKey } from "../integrations/supabase.js";
 
 type CatalogCategoryRow = {
   slug: string;
@@ -39,10 +39,7 @@ type CatalogDayExerciseRow = {
   exercise_id: string;
 };
 
-type ExerciseRow = {
-  id: string;
-  name: string;
-};
+type ExerciseRow = { id: string; name: string };
 
 type Exercise = {
   name: string;
@@ -54,10 +51,7 @@ type Exercise = {
   notes: string | null;
 };
 
-type WorkoutDay = {
-  label: string;
-  exercises: Exercise[];
-};
+type WorkoutDay = { label: string; exercises: Exercise[] };
 
 type WorkoutProgram = {
   id: string;
@@ -93,29 +87,29 @@ export type WorkoutProgramsBundle = {
   categories: CatalogCategory[];
 };
 
-/** Public catalog via PostgREST + anon JWT (same access the app used client-side). */
+/** Public catalog from Railway Postgres. */
 export async function fetchWorkoutProgramsBundle(): Promise<WorkoutProgramsBundle> {
-  const anon = supabaseAnonKey();
-
-   const [categoryRows, programs, days, lines, exercises] = await Promise.all([
-    restJson<CatalogCategoryRow[]>("catalog_categories", anon, "order=sort_order.asc"),
-    restJson<CatalogProgramRow[]>(
-      "catalog_programs",
-      anon,
-      "listing_status=eq.live&order=id.asc"
+  const [categoryRes, programsRes, daysRes, linesRes, exercisesRes] = await Promise.all([
+    query<CatalogCategoryRow>(`SELECT slug, title, subtitle, sort_order, icon_sf_symbol FROM catalog_categories ORDER BY sort_order ASC`),
+    query<CatalogProgramRow>(
+      `SELECT id, name, subtitle, period, date_range, color, is_user_created, category_slug
+       FROM catalog_programs WHERE listing_status = 'live' ORDER BY id ASC`
     ),
-    restJson<CatalogProgramDayRow[]>(
-      "catalog_program_days",
-      anon,
-      "order=program_id.asc,day_index.asc"
+    query<CatalogProgramDayRow>(
+      `SELECT id, program_id, day_index, label FROM catalog_program_days ORDER BY program_id ASC, day_index ASC`
     ),
-    restJson<CatalogDayExerciseRow[]>(
-      "catalog_day_exercises",
-      anon,
-      "order=program_day_id.asc,sort_order.asc"
+    query<CatalogDayExerciseRow>(
+      `SELECT program_day_id, sort_order, max_weight, target_sets, superset_group, is_amrap, is_warmup, notes, exercise_id
+       FROM catalog_day_exercises ORDER BY program_day_id ASC, sort_order ASC`
     ),
-    restJson<ExerciseRow[]>("exercises", anon, "select=id,name"),
+    query<ExerciseRow>(`SELECT id, name FROM exercises`),
   ]);
+
+  const categoryRows = categoryRes.rows;
+  const programs = programsRes.rows;
+  const days = daysRes.rows;
+  const lines = linesRes.rows;
+  const exercises = exercisesRes.rows;
 
   const categories: CatalogCategory[] = categoryRows.map((c) => ({
     slug: c.slug,

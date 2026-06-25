@@ -1,10 +1,15 @@
 import type { NextFunction, Request, Response } from "express";
-import { fetchSupabaseAuthUser } from "../integrations/supabase.js";
+import { verifyAuthUser } from "../services/auth-service.js";
 
-/** Requires `Authorization: Bearer <Supabase access token>`. */
+export type AuthedRequest = Request & {
+  user?: { id: string; email: string | null };
+};
+
+/** Requires `Authorization: Bearer <access token>`. */
 export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
-    await fetchSupabaseAuthUser(req.header("authorization") ?? req.header("Authorization"));
+    const user = await verifyAuthUser(req.header("authorization") ?? req.header("Authorization"));
+    (req as AuthedRequest).user = user;
     next();
   } catch (e) {
     next(e);

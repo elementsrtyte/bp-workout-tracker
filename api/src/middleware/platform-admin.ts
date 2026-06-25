@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { fetchSupabaseAuthUser } from "../integrations/supabase.js";
+import { verifyAuthUser } from "../services/auth-service.js";
 import { assertPlatformAdmin } from "../services/platform-admin.js";
 
 export type AdminRequest = Request & {
@@ -13,7 +13,7 @@ export async function requirePlatformAdmin(
   next: NextFunction
 ): Promise<void> {
   try {
-    const user = await fetchSupabaseAuthUser(
+    const user = await verifyAuthUser(
       req.header("authorization") ?? req.header("Authorization")
     );
     assertPlatformAdmin(user.email);

@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { v5 as uuidv5 } from "uuid";
+import { query, withTransaction } from "../db/pool.js";
 import { HttpError } from "../lib/http-error.js";
-import { restFetchServiceRole, restJsonServiceRole } from "../integrations/supabase.js";
 
 /** Must match `supabase/scripts/generate_seed.py` and iOS `ExerciseNameNormalizer`. */
 const UUID_NS = "6f2f1e3a-8c4d-5b6e-9f0a-1b2c3d4e5f60";
@@ -28,10 +28,7 @@ type InEx = {
   notes?: unknown;
 };
 
-type InDay = {
-  label?: unknown;
-  exercises?: unknown;
-};
+type InDay = { label?: unknown; exercises?: unknown };
 
 type InProgram = {
   id?: unknown;
@@ -108,8 +105,7 @@ function parseProgram(body: unknown): {
       const exName = typeof rawEx.name === "string" ? rawEx.name.trim() : "";
       if (!exName) throw new HttpError(400, "Each exercise needs a non-empty name");
 
-      const maxWeight =
-        typeof rawEx.maxWeight === "string" ? rawEx.maxWeight.trim() : "";
+      const maxWeight = typeof rawEx.maxWeight === "string" ? rawEx.maxWeight.trim() : "";
 
       let targetSets: number | null = null;
       if (rawEx.targetSets !== undefined && rawEx.targetSets !== null) {
@@ -159,10 +155,6 @@ function parseProgram(body: unknown): {
   return { id, name, subtitle, period, dateRange, color, isUserCreated, days };
 }
 
-/**
- * Dev-only: replace one catalog program graph in Supabase and bump `catalog_release.version`.
- * Caller must pass a valid Supabase user JWT; email must be in ADMIN_EMAILS / CATALOG_ADMIN_EMAILS (see admin router).
- */
 export async function postPublishCatalogProgram(
   req: Request,
   res: Response,
@@ -171,13 +163,11 @@ export async function postPublishCatalogProgram(
   try {
     const program = parseProgram(req.body);
 
-    const existing = await restJsonServiceRole<{ id: string }[]>(
-      "catalog_programs",
-      "GET",
-      undefined,
-      `select=id&id=eq.${encodeURIComponent(program.id)}`
+    const existing = await query<{ id: string }>(
+      `SELECT id FROM catalog_programs WHERE id = $1`,
+      [program.id]
     );
-    if (!existing?.length) {
+    if (existing.rows.length === 0) {
       throw new HttpError(
         400,
         "Unknown catalog program id (only existing catalog programs can be published)"
@@ -188,127 +178,79 @@ export async function postPublishCatalogProgram(
     for (const d of program.days) {
       for (const ex of d.exercises) {
         const nk = normNameKey(ex.name);
-        if (!nameKeyToDisplay.has(nk)) {
-          nameKeyToDisplay.set(nk, ex.name.trim());
-        }
+        if (!nameKeyToDisplay.has(nk)) nameKeyToDisplay.set(nk, ex.name.trim());
       }
     }
 
-    const exerciseRows = [...nameKeyToDisplay.entries()].map(([nk, display]) => ({
-      id: exerciseIdFromKey(nk),
-      name: display,
-      name_key: nk,
-    }));
-
-    const upsertEx = await restFetchServiceRole("exercises", {
-      method: "POST",
-      search: "on_conflict=name_key",
-      headers: {
-        Prefer: "resolution=merge-duplicates,return=minimal",
-      },
-      body: JSON.stringify(exerciseRows),
-    });
-    if (!upsertEx.ok) {
-      const text = await upsertEx.text();
-      throw new HttpError(502, `exercises upsert failed: ${upsertEx.status} ${text.slice(0, 200)}`);
-    }
-
-    await restJsonServiceRole(
-      "catalog_programs",
-      "PATCH",
-      {
-        name: program.name,
-        subtitle: program.subtitle,
-        period: program.period,
-        date_range: program.dateRange,
-        color: program.color,
-        is_user_created: program.isUserCreated,
-      },
-      `id=eq.${encodeURIComponent(program.id)}`
-    );
-
-    const del = await restFetchServiceRole("catalog_program_days", {
-      method: "DELETE",
-      search: `program_id=eq.${encodeURIComponent(program.id)}`,
-    });
-    if (!del.ok) {
-      const text = await del.text();
-      throw new HttpError(502, `catalog_program_days delete failed: ${del.status} ${text.slice(0, 200)}`);
-    }
-
-    const dayRows = program.days.map((d, i) => ({
-      id: programDayId(program.id, i),
-      program_id: program.id,
-      day_index: i,
-      label: d.label,
-    }));
-
-    const insDays = await restFetchServiceRole("catalog_program_days", {
-      method: "POST",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify(dayRows),
-    });
-    if (!insDays.ok) {
-      const text = await insDays.text();
-      throw new HttpError(502, `catalog_program_days insert failed: ${insDays.status} ${text.slice(0, 200)}`);
-    }
-
-    const lineRows: Record<string, unknown>[] = [];
-    for (let di = 0; di < program.days.length; di++) {
-      const dayId = programDayId(program.id, di);
-      const d = program.days[di]!;
-      d.exercises.forEach((ex, ei) => {
-        const nk = normNameKey(ex.name);
-        lineRows.push({
-          program_day_id: dayId,
-          exercise_id: exerciseIdFromKey(nk),
-          sort_order: ei,
-          max_weight: ex.maxWeight,
-          target_sets: ex.targetSets,
-          superset_group: ex.supersetGroup,
-          is_amrap: ex.isAmrap,
-          is_warmup: ex.isWarmup,
-          notes: ex.notes,
-        });
-      });
-    }
-
-    if (lineRows.length > 0) {
-      const insLines = await restFetchServiceRole("catalog_day_exercises", {
-        method: "POST",
-        headers: { Prefer: "return=minimal" },
-        body: JSON.stringify(lineRows),
-      });
-      if (!insLines.ok) {
-        const text = await insLines.text();
-        throw new HttpError(
-          502,
-          `catalog_day_exercises insert failed: ${insLines.status} ${text.slice(0, 200)}`
+    await withTransaction(async (client) => {
+      for (const [nk, display] of nameKeyToDisplay) {
+        await client.query(
+          `INSERT INTO exercises (id, name, name_key) VALUES ($1, $2, $3)
+           ON CONFLICT (name_key) DO UPDATE SET name = EXCLUDED.name`,
+          [exerciseIdFromKey(nk), display, nk]
         );
       }
-    }
 
-    const rel = await restJsonServiceRole<{ version: number }[]>(
-      "catalog_release",
-      "GET",
-      undefined,
-      "select=version&id=eq.1"
-    );
-    const prev = rel[0]?.version;
-    const nextVersion = typeof prev === "number" && Number.isFinite(prev) ? prev + 1 : 1;
+      await client.query(
+        `UPDATE catalog_programs SET
+           name = $2, subtitle = $3, period = $4, date_range = $5, color = $6, is_user_created = $7
+         WHERE id = $1`,
+        [
+          program.id,
+          program.name,
+          program.subtitle,
+          program.period,
+          program.dateRange,
+          program.color,
+          program.isUserCreated,
+        ]
+      );
 
-    await restJsonServiceRole(
-      "catalog_release",
-      "PATCH",
-      {
-        version: nextVersion,
-        notes: `publish:${program.id}`,
-        published_at: new Date().toISOString(),
-      },
-      "id=eq.1"
-    );
+      await client.query(`DELETE FROM catalog_program_days WHERE program_id = $1`, [program.id]);
 
-    res.json({ ok: true, programId: program.id, catalogVersion: nextVersion });
+      for (let i = 0; i < program.days.length; i++) {
+        const d = program.days[i]!;
+        const dayId = programDayId(program.id, i);
+        await client.query(
+          `INSERT INTO catalog_program_days (id, program_id, day_index, label) VALUES ($1, $2, $3, $4)`,
+          [dayId, program.id, i, d.label]
+        );
+        for (let ei = 0; ei < d.exercises.length; ei++) {
+          const ex = d.exercises[ei]!;
+          const nk = normNameKey(ex.name);
+          await client.query(
+            `INSERT INTO catalog_day_exercises
+               (program_day_id, exercise_id, sort_order, max_weight, target_sets, superset_group, is_amrap, is_warmup, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+              dayId,
+              exerciseIdFromKey(nk),
+              ei,
+              ex.maxWeight,
+              ex.targetSets,
+              ex.supersetGroup,
+              ex.isAmrap,
+              ex.isWarmup,
+              ex.notes,
+            ]
+          );
+        }
+      }
+
+      const rel = await client.query<{ version: number }>(
+        `SELECT version FROM catalog_release WHERE id = 1 FOR UPDATE`
+      );
+      const prev = rel.rows[0]?.version;
+      const nextVersion = typeof prev === "number" && Number.isFinite(prev) ? prev + 1 : 1;
+      await client.query(
+        `UPDATE catalog_release SET version = $1, notes = $2, published_at = now() WHERE id = 1`,
+        [nextVersion, `publish:${program.id}`]
+      );
+
+      return nextVersion;
+    }).then((nextVersion) => {
+      res.json({ ok: true, programId: program.id, catalogVersion: nextVersion });
+    });
   } catch (e) {
     next(e);
   }

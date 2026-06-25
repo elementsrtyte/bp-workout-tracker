@@ -22,9 +22,5 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>SUPABASE_ANON_KEY</key>
-	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndueW5maWJ0dHNlZWFnYXJkZndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMjA2MjQsImV4cCI6MjA5MTY5NjYyNH0.9Knbx7C6IaWnhTaVQzd331S-0fuUSguGrnAhU66b2l0</string>
-	<key>SUPABASE_URL</key>
-	<string>https://wnynfibttseeagardfwb.supabase.co</string>
 </dict>
 </plist>

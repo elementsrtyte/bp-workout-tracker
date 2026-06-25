@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
+import { query, withTransaction } from "../db/pool.js";
 import { HttpError } from "../lib/http-error.js";
-import { restFetchServiceRole, restJsonServiceRole } from "../integrations/supabase.js";
 import { logAdminAction } from "./platform-admin.js";
 import type { AdminRequest } from "../middleware/platform-admin.js";
 
@@ -52,18 +52,19 @@ export async function getAdminExercises(
   try {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const limit = parseLimit(req.query.limit, 40, 200);
-    const safe = q.replaceAll("*", "").replaceAll(/[,()]/g, " ").trim();
-    const search =
-      safe.length > 0
-        ? `select=id,name,name_key&or=(name.ilike.*${encodeURIComponent(safe)}*,name_key.ilike.*${encodeURIComponent(safe)}*)&order=name.asc&limit=${limit}`
-        : `select=id,name,name_key&order=name.asc&limit=${limit}`;
-    const rows = await restJsonServiceRole<{ id: string; name: string; name_key: string }[]>(
-      "exercises",
-      "GET",
-      undefined,
-      search
-    );
-    res.json({ exercises: rows });
+    const pattern = q.length > 0 ? `%${q.replaceAll("%", "")}%` : null;
+    const r = pattern
+      ? await query<{ id: string; name: string; name_key: string }>(
+          `SELECT id, name, name_key FROM exercises
+           WHERE name ILIKE $1 OR name_key ILIKE $1
+           ORDER BY name ASC LIMIT $2`,
+          [pattern, limit]
+        )
+      : await query<{ id: string; name: string; name_key: string }>(
+          `SELECT id, name, name_key FROM exercises ORDER BY name ASC LIMIT $1`,
+          [limit]
+        );
+    res.json({ exercises: r.rows });
   } catch (e) {
     next(e);
   }
@@ -75,35 +76,15 @@ export async function getAdminCatalogSnapshot(
   next: NextFunction
 ): Promise<void> {
   try {
-    const [release, exerciseHead, programRows] = await Promise.all([
-      restJsonServiceRole<{ id: number; version: number; notes: string | null }[]>(
-        "catalog_release",
-        "GET",
-        undefined,
-        "select=*"
-      ),
-      restFetchServiceRole("exercises", {
-        method: "GET",
-        search: "select=id&limit=1",
-        headers: { Prefer: "count=exact" },
-      }),
-      restJsonServiceRole<{ id: string; name: string }[]>(
-        "catalog_programs",
-        "GET",
-        undefined,
-        "select=id,name&order=name.asc"
-      ),
+    const [release, countRes, programsRes] = await Promise.all([
+      query<{ id: number; version: number; notes: string | null }>(`SELECT * FROM catalog_release WHERE id = 1`),
+      query<{ c: string }>(`SELECT count(*)::text AS c FROM exercises`),
+      query<{ id: string; name: string }>(`SELECT id, name FROM catalog_programs ORDER BY name ASC`),
     ]);
-    const countHeader = exerciseHead.headers.get("content-range");
-    let exerciseCount = 0;
-    if (countHeader) {
-      const m = /\/(\d+)$/.exec(countHeader);
-      if (m) exerciseCount = parseInt(m[1], 10);
-    }
     res.json({
-      catalog_release: release[0] ?? null,
-      exerciseCount,
-      programs: programRows,
+      catalog_release: release.rows[0] ?? null,
+      exerciseCount: parseInt(countRes.rows[0]?.c ?? "0", 10),
+      programs: programsRes.rows,
     });
   } catch (e) {
     next(e);
@@ -116,10 +97,10 @@ export async function getBundledProgress(
   next: NextFunction
 ): Promise<void> {
   try {
-    const rows = await restJsonServiceRole<
-      { id: number; payload: unknown; updated_at: string }[]
-    >("bundled_progress_reference", "GET", undefined, "select=*");
-    res.json({ bundled_progress: rows[0] ?? null });
+    const r = await query<{ id: number; payload: unknown; updated_at: string }>(
+      `SELECT id, payload, updated_at FROM bundled_progress_reference WHERE id = 1`
+    );
+    res.json({ bundled_progress: r.rows[0] ?? null });
   } catch (e) {
     next(e);
   }
@@ -136,11 +117,9 @@ export async function patchBundledProgress(
     if (body.payload === undefined || typeof body.payload !== "object" || body.payload === null) {
       throw new HttpError(400, "payload object required");
     }
-    await restJsonServiceRole<unknown>(
-      "bundled_progress_reference",
-      "PATCH",
-      { payload: body.payload, updated_at: new Date().toISOString() },
-      "id=eq.1"
+    await query(
+      `UPDATE bundled_progress_reference SET payload = $1::jsonb, updated_at = now() WHERE id = 1`,
+      [JSON.stringify(body.payload)]
     );
     logAdminAction(admin.adminEmail, "patch_bundled_progress", {});
     res.json({ ok: true });
@@ -169,32 +148,27 @@ export async function listAdminWorkouts(
 
     let filterUserId = userId;
     if (email.length > 0) {
-      const prof = await restJsonServiceRole<ProfileRow[]>(
-        "profiles",
-        "GET",
-        undefined,
-        `select=id,email,display_name&email=ilike.*${encodeURIComponent(email)}*&limit=5`
+      const prof = await query<ProfileRow>(
+        `SELECT id, email, display_name FROM profiles WHERE lower(email) LIKE $1 LIMIT 5`,
+        [`%${email}%`]
       );
-      if (prof.length === 0) {
+      if (prof.rows.length === 0) {
         res.json({ workouts: [], total: 0, profilesByUserId: {} });
         return;
       }
-      if (filterUserId && !prof.some((p) => p.id === filterUserId)) {
+      if (filterUserId && !prof.rows.some((p) => p.id === filterUserId)) {
         res.json({ workouts: [], total: 0, profilesByUserId: {} });
         return;
       }
-      if (!filterUserId) filterUserId = prof[0]!.id;
+      if (!filterUserId) filterUserId = prof.rows[0]!.id;
     }
 
     let anomalyIds: string[] | null = null;
     if (anomalyOnly) {
-      const rows = await restJsonServiceRole<{ workout_id: string }[]>(
-        "admin_workouts_with_anomalies",
-        "GET",
-        undefined,
-        "select=workout_id"
+      const rows = await query<{ workout_id: string }>(
+        `SELECT workout_id FROM admin_workouts_with_anomalies`
       );
-      anomalyIds = [...new Set(rows.map((r) => r.workout_id))];
+      anomalyIds = [...new Set(rows.rows.map((r) => r.workout_id))];
       assertInListSize("Anomaly", anomalyIds);
       if (anomalyIds.length === 0) {
         res.json({ workouts: [], total: 0, profilesByUserId: {} });
@@ -204,13 +178,10 @@ export async function listAdminWorkouts(
 
     let unlinkedWorkoutIds: string[] | null = null;
     if (unlinkedOnly) {
-      const exRows = await restJsonServiceRole<{ workout_id: string }[]>(
-        "workout_exercises",
-        "GET",
-        undefined,
-        "select=workout_id&canonical_exercise_id=is.null&limit=5000"
+      const exRows = await query<{ workout_id: string }>(
+        `SELECT DISTINCT workout_id FROM workout_exercises WHERE canonical_exercise_id IS NULL LIMIT 5000`
       );
-      unlinkedWorkoutIds = [...new Set(exRows.map((r) => r.workout_id))];
+      unlinkedWorkoutIds = exRows.rows.map((r) => r.workout_id);
       assertInListSize("Unlinked exercise", unlinkedWorkoutIds);
       if (unlinkedWorkoutIds.length === 0) {
         res.json({ workouts: [], total: 0, profilesByUserId: {} });
@@ -219,42 +190,47 @@ export async function listAdminWorkouts(
     }
 
     const conditions: string[] = [];
-    if (filterUserId) conditions.push(`user_id=eq.${filterUserId}`);
-    if (programId) conditions.push(`program_id=eq.${encodeURIComponent(programId)}`);
+    const params: unknown[] = [];
+    let pi = 1;
+
+    if (filterUserId) {
+      conditions.push(`user_id = $${pi++}`);
+      params.push(filterUserId);
+    }
+    if (programId) {
+      conditions.push(`program_id = $${pi++}`);
+      params.push(programId);
+    }
     if (anomalyIds) {
-      conditions.push(`id=in.(${anomalyIds.join(",")})`);
+      conditions.push(`id = ANY($${pi++}::uuid[])`);
+      params.push(anomalyIds);
     }
     if (unlinkedWorkoutIds) {
-      conditions.push(`id=in.(${unlinkedWorkoutIds.join(",")})`);
+      conditions.push(`id = ANY($${pi++}::uuid[])`);
+      params.push(unlinkedWorkoutIds);
     }
 
-    const andFilter = conditions.length > 0 ? `&${conditions.join("&")}` : "";
-    const search = `select=*&order=logged_at.desc&limit=${limit}&offset=${offset}${andFilter}`;
-    const workouts = await restJsonServiceRole<WorkoutRow[]>("workouts", "GET", undefined, search);
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const countR = await query<{ c: string }>(
+      `SELECT count(*)::text AS c FROM workouts ${where}`,
+      params
+    );
+    const total = parseInt(countR.rows[0]?.c ?? "0", 10);
 
-    const countSearch = `select=id&limit=1${andFilter}`;
-    const countRes = await restFetchServiceRole("workouts", {
-      method: "GET",
-      search: countSearch,
-      headers: { Prefer: "count=exact" },
-    });
-    let total = workouts.length;
-    const cr = countRes.headers.get("content-range");
-    if (cr) {
-      const m = /\/(\d+)$/.exec(cr);
-      if (m) total = parseInt(m[1], 10);
-    }
+    const listR = await query<WorkoutRow>(
+      `SELECT * FROM workouts ${where} ORDER BY logged_at DESC LIMIT $${pi++} OFFSET $${pi}`,
+      [...params, limit, offset]
+    );
+    const workouts = listR.rows;
 
     const userIds = [...new Set(workouts.map((w) => w.user_id))];
     let profilesByUserId: Record<string, ProfileRow> = {};
     if (userIds.length > 0) {
-      const plist = await restJsonServiceRole<ProfileRow[]>(
-        "profiles",
-        "GET",
-        undefined,
-        `select=id,email,display_name&id=in.(${userIds.join(",")})`
+      const plist = await query<ProfileRow>(
+        `SELECT id, email, display_name FROM profiles WHERE id = ANY($1::uuid[])`,
+        [userIds]
       );
-      profilesByUserId = Object.fromEntries(plist.map((p) => [p.id, p]));
+      profilesByUserId = Object.fromEntries(plist.rows.map((p) => [p.id, p]));
     }
 
     res.json({ workouts, total, profilesByUserId });
@@ -272,59 +248,37 @@ export async function getAdminWorkoutDetail(
     const id = req.params.id?.trim();
     if (!id) throw new HttpError(400, "workout id required");
 
-    const wrows = await restJsonServiceRole<WorkoutRow[]>(
-      "workouts",
-      "GET",
-      undefined,
-      `select=*&id=eq.${encodeURIComponent(id)}&limit=1`
-    );
-    const workout = wrows[0];
+    const wrows = await query<WorkoutRow>(`SELECT * FROM workouts WHERE id = $1 LIMIT 1`, [id]);
+    const workout = wrows.rows[0];
     if (!workout) throw new HttpError(404, "Workout not found");
 
-    // Embed sets via FK (workout_sets.exercise_id → workout_exercises.id). A separate
-    // `exercise_id=in.(...)` query can return no rows in some PostgREST/URL edge cases.
-    const exercisesRaw = await restJsonServiceRole<
-      {
-        id: string;
-        name: string;
-        prescribed_name: string | null;
-        sort_order: number;
-        canonical_exercise_id: string | null;
-        workout_sets: Array<{
-          id: string;
-          weight: number;
-          reps: number;
-          sort_order: number;
-        }> | null;
-      }[]
-    >(
-      "workout_exercises",
-      "GET",
-      undefined,
-      `workout_id=eq.${encodeURIComponent(id)}&select=id,name,prescribed_name,sort_order,canonical_exercise_id,workout_sets(id,weight,reps,sort_order)&order=sort_order.asc`
+    const exRows = await query<{
+      id: string;
+      name: string;
+      prescribed_name: string | null;
+      sort_order: number;
+      canonical_exercise_id: string | null;
+    }>(
+      `SELECT id, name, prescribed_name, sort_order, canonical_exercise_id
+       FROM workout_exercises WHERE workout_id = $1 ORDER BY sort_order ASC`,
+      [id]
     );
 
-    const exercises = exercisesRaw.map((e) => ({
-      id: e.id,
-      name: e.name,
-      prescribed_name: e.prescribed_name,
-      sort_order: e.sort_order,
-      canonical_exercise_id: e.canonical_exercise_id,
-      workout_sets: [...(e.workout_sets ?? [])].sort((a, b) => a.sort_order - b.sort_order),
-    }));
+    const exercises = [];
+    for (const e of exRows.rows) {
+      const setsR = await query<{ id: string; weight: number; reps: number; sort_order: number }>(
+        `SELECT id, weight, reps, sort_order FROM workout_sets WHERE exercise_id = $1 ORDER BY sort_order ASC`,
+        [e.id]
+      );
+      exercises.push({ ...e, workout_sets: setsR.rows });
+    }
 
-    const prof = await restJsonServiceRole<ProfileRow[]>(
-      "profiles",
-      "GET",
-      undefined,
-      `id=eq.${workout.user_id}&select=id,email,display_name&limit=1`
+    const prof = await query<ProfileRow>(
+      `SELECT id, email, display_name FROM profiles WHERE id = $1 LIMIT 1`,
+      [workout.user_id]
     );
 
-    res.json({
-      workout,
-      exercises,
-      profile: prof[0] ?? null,
-    });
+    res.json({ workout, exercises, profile: prof.rows[0] ?? null });
   } catch (e) {
     next(e);
   }
@@ -340,14 +294,24 @@ export async function patchAdminWorkout(
     const id = req.params.id?.trim();
     if (!id) throw new HttpError(400, "workout id required");
     const body = req.body as { notes?: unknown; program_name?: unknown; day_label?: unknown };
-    const patch: Record<string, unknown> = {};
-    if (typeof body.notes === "string") patch.notes = body.notes;
-    if (typeof body.program_name === "string") patch.program_name = body.program_name;
-    if (typeof body.day_label === "string") patch.day_label = body.day_label;
-    if (Object.keys(patch).length === 0) throw new HttpError(400, "No valid fields to patch");
-    patch.updated_at = new Date().toISOString();
-
-    await restJsonServiceRole<unknown>("workouts", "PATCH", patch, `id=eq.${id}`);
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    let pi = 1;
+    if (typeof body.notes === "string") {
+      sets.push(`notes = $${pi++}`);
+      params.push(body.notes);
+    }
+    if (typeof body.program_name === "string") {
+      sets.push(`program_name = $${pi++}`);
+      params.push(body.program_name);
+    }
+    if (typeof body.day_label === "string") {
+      sets.push(`day_label = $${pi++}`);
+      params.push(body.day_label);
+    }
+    if (sets.length === 0) throw new HttpError(400, "No valid fields to patch");
+    params.push(id);
+    await query(`UPDATE workouts SET ${sets.join(", ")} WHERE id = $${pi}`, params);
     logAdminAction(admin.adminEmail, "patch_workout", { workout_id: id });
     res.json({ ok: true });
   } catch (e) {
@@ -364,11 +328,8 @@ export async function deleteAdminWorkout(
     const admin = req as AdminRequest;
     const id = req.params.id?.trim();
     if (!id) throw new HttpError(400, "workout id required");
-    const r = await restFetchServiceRole("workouts", { method: "DELETE", search: `id=eq.${id}` });
-    if (!r.ok) {
-      const t = await r.text();
-      throw new HttpError(502, `Delete failed: ${r.status} ${t.slice(0, 200)}`);
-    }
+    const r = await query(`DELETE FROM workouts WHERE id = $1`, [id]);
+    if ((r.rowCount ?? 0) === 0) throw new HttpError(404, "Workout not found");
     logAdminAction(admin.adminEmail, "delete_workout", { workout_id: id });
     res.status(204).end();
   } catch (e) {
@@ -390,21 +351,28 @@ export async function patchAdminWorkoutExercise(
       name?: unknown;
       prescribed_name?: unknown;
     };
-    const patch: Record<string, unknown> = {};
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    let pi = 1;
     if (body.canonical_exercise_id === null) {
-      patch.canonical_exercise_id = null;
+      sets.push(`canonical_exercise_id = NULL`);
     } else if (typeof body.canonical_exercise_id === "string" && body.canonical_exercise_id.trim()) {
-      patch.canonical_exercise_id = body.canonical_exercise_id.trim();
+      sets.push(`canonical_exercise_id = $${pi++}`);
+      params.push(body.canonical_exercise_id.trim());
     }
-    if (typeof body.name === "string") patch.name = body.name;
+    if (typeof body.name === "string") {
+      sets.push(`name = $${pi++}`);
+      params.push(body.name);
+    }
     if (body.prescribed_name === null) {
-      patch.prescribed_name = null;
+      sets.push(`prescribed_name = NULL`);
     } else if (typeof body.prescribed_name === "string") {
-      patch.prescribed_name = body.prescribed_name;
+      sets.push(`prescribed_name = $${pi++}`);
+      params.push(body.prescribed_name);
     }
-    if (Object.keys(patch).length === 0) throw new HttpError(400, "No valid fields to patch");
-
-    await restJsonServiceRole<unknown>("workout_exercises", "PATCH", patch, `id=eq.${id}`);
+    if (sets.length === 0) throw new HttpError(400, "No valid fields to patch");
+    params.push(id);
+    await query(`UPDATE workout_exercises SET ${sets.join(", ")} WHERE id = $${pi}`, params);
     logAdminAction(admin.adminEmail, "patch_workout_exercise", { workout_exercise_id: id });
     res.json({ ok: true });
   } catch (e) {
@@ -423,40 +391,20 @@ export async function deleteAdminCatalogProgram(
     if (!programId) throw new HttpError(400, "program id required");
     if (programId.length > 200) throw new HttpError(400, "program id too long");
 
-    const existing = await restJsonServiceRole<{ id: string }[]>(
-      "catalog_programs",
-      "GET",
-      undefined,
-      `select=id&id=eq.${encodeURIComponent(programId)}&limit=1`
+    const existing = await query<{ id: string }>(
+      `SELECT id FROM catalog_programs WHERE id = $1 LIMIT 1`,
+      [programId]
     );
-    if (existing.length === 0) throw new HttpError(404, "Catalog program not found");
+    if (existing.rows.length === 0) throw new HttpError(404, "Catalog program not found");
 
-    const del = await restFetchServiceRole("catalog_programs", {
-      method: "DELETE",
-      search: `id=eq.${encodeURIComponent(programId)}`,
-    });
-    if (!del.ok) {
-      const t = await del.text();
-      throw new HttpError(502, `Delete catalog program failed: ${del.status} ${t.slice(0, 200)}`);
-    }
+    await query(`DELETE FROM catalog_programs WHERE id = $1`, [programId]);
 
-    const rel = await restJsonServiceRole<{ version: number }[]>(
-      "catalog_release",
-      "GET",
-      undefined,
-      "select=version&id=eq.1"
-    );
-    const prev = rel[0]?.version;
+    const rel = await query<{ version: number }>(`SELECT version FROM catalog_release WHERE id = 1`);
+    const prev = rel.rows[0]?.version;
     const nextVersion = typeof prev === "number" && Number.isFinite(prev) ? prev + 1 : 1;
-    await restJsonServiceRole(
-      "catalog_release",
-      "PATCH",
-      {
-        version: nextVersion,
-        notes: `delete:${programId}`,
-        published_at: new Date().toISOString(),
-      },
-      "id=eq.1"
+    await query(
+      `UPDATE catalog_release SET version = $1, notes = $2, published_at = now() WHERE id = 1`,
+      [nextVersion, `delete:${programId}`]
     );
 
     logAdminAction(admin.adminEmail, "delete_catalog_program", { programId });
@@ -485,35 +433,25 @@ export async function postBulkLinkWorkoutExercises(
     if (!nameKey) throw new HttpError(400, "nameKey required");
     if (!canonicalExerciseId) throw new HttpError(400, "canonicalExerciseId required");
 
-    const exCheck = await restJsonServiceRole<{ id: string }[]>(
-      "exercises",
-      "GET",
-      undefined,
-      `id=eq.${canonicalExerciseId}&select=id&limit=1`
+    const exCheck = await query<{ id: string }>(
+      `SELECT id FROM exercises WHERE id = $1 LIMIT 1`,
+      [canonicalExerciseId]
     );
-    if (exCheck.length === 0) throw new HttpError(400, "canonicalExerciseId not found");
+    if (exCheck.rows.length === 0) throw new HttpError(400, "canonicalExerciseId not found");
 
-    const candidates = await restJsonServiceRole<{ id: string; name: string }[]>(
-      "workout_exercises",
-      "GET",
-      undefined,
-      "select=id,name&canonical_exercise_id=is.null&limit=5000"
+    const candidates = await query<{ id: string; name: string }>(
+      `SELECT id, name FROM workout_exercises WHERE canonical_exercise_id IS NULL LIMIT 5000`
     );
     const key = normNameKey(nameKey);
-    const ids = candidates.filter((c) => normNameKey(c.name) === key).map((c) => c.id);
+    const ids = candidates.rows.filter((c) => normNameKey(c.name) === key).map((c) => c.id);
     if (dryRun) {
       res.json({ dryRun: true, matchCount: ids.length, ids: ids.slice(0, 50) });
       return;
     }
-    const chunk = 80;
-    for (let i = 0; i < ids.length; i += chunk) {
-      const slice = ids.slice(i, i + chunk);
-      if (slice.length === 0) continue;
-      await restJsonServiceRole<unknown>(
-        "workout_exercises",
-        "PATCH",
-        { canonical_exercise_id: canonicalExerciseId },
-        `id=in.(${slice.join(",")})`
+    if (ids.length > 0) {
+      await query(
+        `UPDATE workout_exercises SET canonical_exercise_id = $1 WHERE id = ANY($2::uuid[])`,
+        [canonicalExerciseId, ids]
       );
     }
     logAdminAction(admin.adminEmail, "bulk_link_workout_exercises", {

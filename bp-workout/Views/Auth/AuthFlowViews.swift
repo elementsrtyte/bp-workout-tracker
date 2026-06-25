@@ -202,20 +202,12 @@ private struct AuthLoginView: View {
 
     @ViewBuilder
     private var configCallouts: some View {
-        if !SupabaseConfig.isConfigured || !BlueprintAPIConfig.isConfigured {
+        if !BlueprintAPIConfig.isConfigured {
             VStack(alignment: .leading, spacing: 8) {
-                if !SupabaseConfig.isConfigured {
-                    Text("Sign-in requires SUPABASE_URL and SUPABASE_ANON_KEY in the target Info (or environment).")
-                        .font(.caption2)
-                        .foregroundStyle(BlueprintTheme.amber)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !BlueprintAPIConfig.isConfigured {
-                    Text("Catalog refresh and workout sync need BLUEPRINT_API_URL pointing at your Blueprint API.")
-                        .font(.caption2)
-                        .foregroundStyle(BlueprintTheme.amber)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text("Sign-in, catalog, and workout sync require BLUEPRINT_API_URL in app configuration.")
+                    .font(.caption2)
+                    .foregroundStyle(BlueprintTheme.amber)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 4)
         }

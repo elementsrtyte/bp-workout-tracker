@@ -1,13 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
+import { withTransaction } from "../db/pool.js";
 import { HttpError } from "../lib/http-error.js";
-import { fetchSupabaseAuthUser, restFetch } from "../integrations/supabase.js";
+import { verifyAuthUser } from "./auth-service.js";
 
-type SyncSet = {
-  id: string;
-  weight: number;
-  reps: number;
-  order: number;
-};
+type SyncSet = { id: string; weight: number; reps: number; order: number };
 
 type SyncExercise = {
   id: string;
@@ -34,14 +30,6 @@ function assertUuid(label: string, v: string): void {
   if (!uuidRe.test(v)) throw new HttpError(400, `Invalid ${label}`);
 }
 
-type WorkoutRow = { id: string };
-
-async function assertRestOk(res: globalThis.Response, ctx: string): Promise<void> {
-  if (res.ok) return;
-  const text = await res.text();
-  throw new HttpError(502, `${ctx}: ${res.status} ${text.slice(0, 200)}`);
-}
-
 export async function postWorkoutSync(
   req: Request,
   res: Response,
@@ -49,8 +37,7 @@ export async function postWorkoutSync(
 ): Promise<void> {
   try {
     const authHeader = req.header("authorization") ?? req.header("Authorization");
-    const { id: userId } = await fetchSupabaseAuthUser(authHeader);
-    const token = authHeader!.slice(7).trim();
+    const { id: userId } = await verifyAuthUser(authHeader);
 
     const body = req.body as SyncBody;
     const clientWorkoutId = body.id?.trim();
@@ -82,159 +69,75 @@ export async function postWorkoutSync(
 
     const sortedEx = [...exercisesRaw].sort((a, b) => a.sortOrder - b.sortOrder);
 
-    const workoutInsert = {
-      user_id: userId,
-      client_workout_id: clientWorkoutId,
-      logged_at: loggedAt,
-      program_id: body.programId ?? null,
-      program_name: body.programName ?? null,
-      day_label: body.dayLabel ?? null,
-      notes: body.notes ?? null,
-    };
+    await withTransaction(async (client) => {
+      const existing = await client.query<{ id: string }>(
+        `SELECT id FROM workouts
+         WHERE user_id = $1 AND client_workout_id = $2
+         LIMIT 1`,
+        [userId, clientWorkoutId]
+      );
+      let serverWorkoutId = existing.rows[0]?.id;
 
-    const patch = {
-      logged_at: loggedAt,
-      program_id: body.programId ?? null,
-      program_name: body.programName ?? null,
-      day_label: body.dayLabel ?? null,
-      notes: body.notes ?? null,
-    };
-
-    let serverWorkoutId = await fetchWorkoutServerId(token, userId, clientWorkoutId);
-
-    if (serverWorkoutId) {
-      const patchR = await restFetch("workouts", token, {
-        method: "PATCH",
-        search: `id=eq.${serverWorkoutId}`,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      await assertRestOk(patchR, "PATCH workout");
-    } else {
-      const postR = await restFetch("workouts", token, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Prefer: "return=representation",
-        },
-        body: JSON.stringify(workoutInsert),
-      });
-      if (!postR.ok) {
-        serverWorkoutId = await fetchWorkoutServerId(token, userId, clientWorkoutId);
-        if (serverWorkoutId) {
-          const patchR = await restFetch("workouts", token, {
-            method: "PATCH",
-            search: `id=eq.${serverWorkoutId}`,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(patch),
-          });
-          await assertRestOk(patchR, "PATCH workout after conflict");
-        } else {
-          const text = await postR.text();
-          throw new HttpError(502, `POST workout: ${postR.status} ${text.slice(0, 200)}`);
-        }
+      if (serverWorkoutId) {
+        await client.query(
+          `UPDATE workouts SET
+             logged_at = $2, program_id = $3, program_name = $4, day_label = $5, notes = $6
+           WHERE id = $1 AND user_id = $7`,
+          [
+            serverWorkoutId,
+            loggedAt,
+            body.programId ?? null,
+            body.programName ?? null,
+            body.dayLabel ?? null,
+            body.notes ?? null,
+            userId,
+          ]
+        );
       } else {
-        const rows = (await postR.json()) as WorkoutRow[];
-        const id = rows[0]?.id;
-        if (!id) throw new HttpError(502, "No workout id returned");
-        serverWorkoutId = id;
+        const ins = await client.query<{ id: string }>(
+          `INSERT INTO workouts (user_id, client_workout_id, logged_at, program_id, program_name, day_label, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          [
+            userId,
+            clientWorkoutId,
+            loggedAt,
+            body.programId ?? null,
+            body.programName ?? null,
+            body.dayLabel ?? null,
+            body.notes ?? null,
+          ]
+        );
+        serverWorkoutId = ins.rows[0]?.id;
+        if (!serverWorkoutId) throw new HttpError(502, "Failed to create workout");
       }
-    }
 
-    const delR = await restFetch("workout_exercises", token, {
-      method: "DELETE",
-      search: `workout_id=eq.${serverWorkoutId}`,
+      await client.query(`DELETE FROM workout_exercises WHERE workout_id = $1`, [serverWorkoutId]);
+
+      if (sortedEx.length === 0) return;
+
+      for (const ex of sortedEx) {
+        const exIns = await client.query<{ id: string }>(
+          `INSERT INTO workout_exercises (workout_id, client_exercise_id, name, prescribed_name, sort_order)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id`,
+          [serverWorkoutId, ex.id, ex.name, ex.prescribedName ?? null, ex.sortOrder]
+        );
+        const exerciseId = exIns.rows[0]?.id;
+        if (!exerciseId) continue;
+        const sortedSets = [...ex.sets].sort((a, b) => a.order - b.order);
+        for (const s of sortedSets) {
+          await client.query(
+            `INSERT INTO workout_sets (exercise_id, client_set_id, weight, reps, sort_order)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [exerciseId, s.id, s.weight, s.reps, s.order]
+          );
+        }
+      }
     });
-    await assertRestOk(delR, "DELETE workout_exercises");
-
-    if (sortedEx.length === 0) {
-      res.status(204).end();
-      return;
-    }
-
-    const exerciseRows = sortedEx.map((ex) => ({
-      workout_id: serverWorkoutId,
-      client_exercise_id: ex.id,
-      name: ex.name,
-      prescribed_name: ex.prescribedName ?? null,
-      sort_order: ex.sortOrder,
-    }));
-
-    const exPost = await restFetch("workout_exercises", token, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify(exerciseRows),
-    });
-    if (!exPost.ok) {
-      const text = await exPost.text();
-      throw new HttpError(502, `POST workout_exercises: ${exPost.status} ${text.slice(0, 200)}`);
-    }
-    const insertedEx = (await exPost.json()) as Array<{ id: string; client_exercise_id: string | null }>;
-
-    const serverExerciseByClient = new Map<string, string>();
-    for (const row of insertedEx) {
-      if (row.client_exercise_id) {
-        serverExerciseByClient.set(row.client_exercise_id, row.id);
-      }
-    }
-
-    const setRows: Array<{
-      exercise_id: string;
-      client_set_id: string;
-      weight: number;
-      reps: number;
-      sort_order: number;
-    }> = [];
-
-    for (const ex of sortedEx) {
-      const sid = serverExerciseByClient.get(ex.id);
-      if (!sid) continue;
-      const sortedSets = [...ex.sets].sort((a, b) => a.order - b.order);
-      for (const s of sortedSets) {
-        setRows.push({
-          exercise_id: sid,
-          client_set_id: s.id,
-          weight: s.weight,
-          reps: s.reps,
-          sort_order: s.order,
-        });
-      }
-    }
-
-    if (setRows.length > 0) {
-      const setPost = await restFetch("workout_sets", token, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Prefer: "return=representation",
-        },
-        body: JSON.stringify(setRows),
-      });
-      if (!setPost.ok) {
-        const text = await setPost.text();
-        throw new HttpError(502, `POST workout_sets: ${setPost.status} ${text.slice(0, 200)}`);
-      }
-    }
 
     res.status(204).end();
   } catch (e) {
     next(e);
   }
-}
-
-async function fetchWorkoutServerId(
-  userJwt: string,
-  userId: string,
-  clientWorkoutId: string
-): Promise<string | null> {
-  const r = await restFetch("workouts", userJwt, {
-    method: "GET",
-    search: `user_id=eq.${userId}&client_workout_id=eq.${clientWorkoutId}&select=id&limit=1`,
-  });
-  if (!r.ok) return null;
-  const rows = (await r.json()) as WorkoutRow[];
-  return rows[0]?.id ?? null;
 }

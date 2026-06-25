@@ -7,11 +7,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Session } from "@supabase/supabase-js";
-import { supabase, supabaseConfigured } from "../lib/supabase";
+import {
+  authConfigured,
+  loadStoredSession,
+  refreshStoredSession,
+  saveSession,
+  signInWithPassword,
+  type AuthSession,
+} from "../lib/auth";
 
 type AuthContextValue = {
-  session: Session | null;
+  session: AuthSession | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -21,33 +27,41 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!supabaseConfigured) {
+    if (!authConfigured) {
       setLoading(false);
       return;
     }
-    void supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session ?? null);
-      setLoading(false);
-    });
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-    });
-    return () => subscription.unsubscribe();
+    void (async () => {
+      const stored = loadStoredSession();
+      if (!stored?.refresh_token) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const next = await refreshStoredSession(stored.refresh_token);
+        saveSession(next);
+        setSession(next);
+      } catch {
+        saveSession(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    const next = await signInWithPassword(email, password);
+    saveSession(next);
+    setSession(next);
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    saveSession(null);
+    setSession(null);
   }, []);
 
   const value = useMemo(
@@ -56,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signIn,
       signOut,
-      configured: supabaseConfigured,
+      configured: authConfigured,
     }),
     [session, loading, signIn, signOut]
   );
